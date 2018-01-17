@@ -1,0 +1,23 @@
+.description {
+  margin: 1rem 0;
+}
+
+button {
+  margin-top: 2rem;
+}
+
+.form > li > div:first-child  {
+  padding-right: 1rem;
+}
+
+.form > li > div:nth-child(2) {
+  padding-right: 7rem;
+}
+
+input, textarea {
+  width: 10rem;
+}
+
+.textLabel {
+  vertical-align: top;
+}

@@ -1,0 +1,154 @@
+<?php
+#-----------------------------------------------------------------------------#
+# File: weekly.html
+# Author: Conrad Damon
+# Date: 01/09/2017
+#
+# Displays the results of the given disc golf weekly (provided in query string
+# argument 'id').
+#-----------------------------------------------------------------------------#
+
+require_once('db.php');
+require_once('log.php');
+require_once('util.php');
+
+# fetch data about weekly
+$id = get_input('id', 'get');
+if (!$id) {
+  echo "Error: missing weekly ID.";
+  die();
+}
+
+$sql = "SELECT * FROM weekly WHERE id=$id";
+$weeklyResult = db_query($sql, 'one');
+if (!$weeklyResult) {
+  echo "Error: weekly $id not found.";
+  die();
+}
+
+#var_dump($weeklyResult);
+$date = $weeklyResult['date'];
+$par = $weeklyResult['par'];
+$notes = $weeklyResult['notes'];
+
+# fetch data about the course
+$courseId = $weeklyResult['course_id'];
+$sql = "SELECT * FROM course WHERE id=$courseId";
+$courseResult = db_query($sql, 'one');
+#var_dump($courseResult);
+$course = $courseResult['name'];
+$contactName = $courseResult['contact_name'];
+$contactEmail = $courseResult['contact_email'];
+$multiLayouts = strpos($courseResult['layouts'], ',') !== false;
+
+# cobble together a title
+$date = date("M j, Y", strtotime($date));
+$title = "$course disc golf weekly on $date";
+$titleLink = "<a href='course.html?id=$courseId'>$course</a> disc golf weekly on $date";
+if ($multiLayouts) {
+  $layout = $weeklyResult['layout'];
+  $titleLink = $titleLink . " ($layout course)";
+}
+
+# fetch the results
+$sql = "SELECT r.*,p.name FROM round r INNER JOIN player p ON r.player_id=p.id WHERE r.weekly_id=$id";
+$roundResult = db_query($sql);
+#show_me($roundResult);
+if (!$roundResult) {
+  echo "No rounds found for the weekly on " . $weeklyResult['date'] . ". That's odd.";
+  die();
+}
+
+# find the low scratch score
+$players = array();
+$low_score = 1000;
+foreach ($roundResult as $r) {
+  $pid = $r['player_id'];
+  $round[$pid] = $r;
+  array_push($players, $pid);
+  if ($r['score'] < $low_score && $r['score'] != -1) {
+    $low_scorers = array($r['name']);
+    $low_score = $r['score'];
+  }
+  else if ($r['score'] == $low_score) {
+    array_push($low_scorers, $r['name']);
+  }
+}
+$low_scorers = implode(", ", $low_scorers);
+
+# sort players (their IDs) by adjusted score
+usort($players, function($a, $b) use($round) {
+  $roundA = $round[$a];
+  $roundB = $round[$b];
+  $adjA = ($roundA['score'] == -1) ? 5000 : $roundA['adjusted_score'];
+  $adjB = ($roundB['score'] == -1) ? 5000 : $roundB['adjusted_score'];
+  $testA = isset($roundA['player_handicap']) ? $adjA : 1000 + $adjA;
+  $testB = isset($roundB['player_handicap']) ? $adjB : 1000 + $adjB;
+
+  return $testA - $testB;
+});
+#show_me($players, "Sorted");
+
+if ($notes) {
+  $notes = "<p><strong>Note:</strong> $notes</p>\n";
+}
+
+echo <<< EOF
+<html>
+<head>
+<title>$title</title>
+</head>
+<body>
+<h1>$titleLink</h1>
+<p>Par was $par. The low scratch score of the day was $low_score by $low_scorers.</p>
+$notes
+<table cellspacing=15>
+<tr align=left><th>Place</th><th>Player</th><th>Raw Score</th><th>Handicap</th><th>Score</th><th>Prize</th></tr>
+EOF;
+
+# Display the results in a table
+
+# we don't use foreach since we need $i for figuring out place
+for ($i = 0; $i < count($players); $i++) {
+  $pid = $players[$i];
+  $r = $round[$pid];
+  
+  $player = $r['name'];
+  $score = $r['score'];
+  if ($score == -1) {
+    $score = "DNF";
+    $dnf = true;
+  }
+  $hcap = !$dnf ? $r['player_handicap'] : ' ';
+  if ($hcap && $r['manual_handicap']) {
+    $hcap = '(' . $hcap . ')';
+  }
+  $adjScore = !$dnf ? $r['adjusted_score'] : ' ';
+  $prize = $r['winnings'];
+  if ($prize == 0) {
+    $prize = ' ';
+  }
+  else {
+    $unpaid = $prize > 0 && !$r['paid'] ? '*' : '';
+    $prize = formatMoney($prize, ' ') . $unpaid;
+  }
+  $place = $i + 1;
+  if ($adjScore == $prevScore) {
+    $place = $curPlace;
+  }
+  $prevScore = $adjScore;
+  $curPlace = $place;
+
+  echo "<tr align=left><td>$place</td><td>$player</td><td>$score</td><td>$hcap</td><td>$adjScore</td><td>$prize</td></tr>\n";
+}
+
+echo <<< EOF
+</table>
+<p>* Uncollected winnings. To collect, send payment information (PayPal, home address, etc) to 
+<a href="mailto:$contactEmail">$contactName</a>.</p>
+<p>() means estimated handicap</p>
+<p><a href="admin/results.html?weeklyId=$id">Edit results</a> (requires password)</p>
+</body>
+</html>
+EOF;
+?>

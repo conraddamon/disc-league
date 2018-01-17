@@ -1,0 +1,57 @@
+#weeklyContainer, #playerContainer {
+  margin-bottom: 2rem;
+}
+
+#date {
+  width: 5rem;
+}
+
+#handicap {
+  width: 6rem;
+}
+
+.moneyContainer, .notesContainer {
+  margin-top: 1rem;
+}
+
+.inputContainer, .courseMoney, .notesContainer {
+  display: inline-block;
+  margin-left: 3rem;
+}
+
+.notesContainer input {
+  width: 32rem;
+}
+
+#player, .playerName {
+  width: 12rem;
+}
+
+.playerName {
+  display: inline-block;
+}
+
+.playerDataContainer {
+  margin-bottom: 3em;
+}
+
+input.invalid {
+  border: 1px red solid;
+}
+
+.dataCell input {
+  width: 3rem;
+}
+
+.imgTrash {
+  width: 20px;
+  height: 16px;
+  background: url("/images/trash.gif");
+  margin-left: 1rem;
+  cursor: pointer;
+}
+
+button {
+  font-size: 1rem;
+  cursor: pointer;
+}

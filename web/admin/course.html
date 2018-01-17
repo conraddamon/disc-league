@@ -1,0 +1,165 @@
+<html>
+<head>
+<link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/themes/smoothness/jquery-ui.css">
+<link rel="stylesheet" href="../../css/common.css">
+<link rel="stylesheet" href="../../css/dgw/course_admin.css">
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
+<script src="../../js/common.js"></script>
+<script src="../../js/dgw/common.js"></script>
+<script src="../../js/dgw/course_admin.js"></script>
+<script>
+function launch() {
+    initializeCourse();
+}
+</script>
+<style>
+.title {
+  text-align: center;
+}
+.header {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-top: 2rem;
+}
+.description {
+  margin: 1rem 0;
+}
+button {
+  font-size: 1rem;
+  cursor: pointer;
+  margin-top: 2rem;
+}
+.form {
+  display: table;
+  border-collapse: collapse;
+  padding: 0;
+  margin: 0;
+}
+.form > li {
+  display: table-row;
+}
+.form > li > div {
+  display: table-cell;
+  padding-bottom: 0.5rem;
+}
+.form > li > div:first-child  {
+  padding-right: 1rem;
+}
+.form > li > div:nth-child(2) {
+  padding-right: 7rem;
+}
+input, textarea {
+  width: 10rem;
+}
+.textLabel {
+  vertical-align: top;
+}
+input.invalid {
+  border: 1px red solid;
+}
+</style>
+<title class="title">Add a Course</title>
+</head>
+<body onload="launch()">
+<h2 class="title">Add a Course</h2>
+<form id="form1" method="post" action="course.php">
+  <div class="header">Course Information</div>
+  <div class="description">Enter basic information about the course and its administrator. A course may have multiple layouts, and alternate weeklies among them.</div>
+  <ul class="form">
+    <li>
+      <div><label for="name" id="name_label">*Course Name:</label></div>
+      <div><input type="text" name="name" id="name" tabIndex=0 /></div>
+    </li>
+    <li>
+      <div><label for="contact_name" id="contact_name_label">*Course Admin Name:</label></div>
+      <div><input type="text" name="contact_name"  id="contact_name" tabIndex=0 /></div>
+    </li>
+    <li>
+      <div><label for="contact_email" id="contact_email_label">*Course Admin Email:</label></div>
+      <div><input type="text" name="contact_email" id="contact_email" tabIndex=0 /></div>
+    </li>
+    <li>
+      <div><label for="password" id="password_label">*Course Password:</label></div>
+      <div><input type="password" name="password" id="password" tabIndex=0 /></div>
+      <div id="passwordDesc">The course password will allow you to enter weekly results and edit course info.</div>
+    </li>
+    <li id="newPasswordContainer" style="display:none;">
+      <div><label for="newPassword">New Password:</label></div>
+      <div><input type="password" name="newPassword" id="newPassword" tabIndex=0 /></div>
+      <div>To change the course password, enter the new password here.</div>
+    </li>
+    <li>
+      <div><label for="layouts">Layouts:</label></div>
+      <div><input ype="text" name="layouts" id="layouts" tabIndex=0 /></div>
+      <div>If there are multiple layouts, separate them with a comma, eg "long,short".
+    </li>
+    <li>
+      <div><label for="location">Location:</label></div>
+      <div><input type="text" name="location" id="location" tabIndex=0 /></div>
+      <div>City, State, Country (if not US)</div>
+    </li>
+    <li>
+      <div><label for="note" class="textLabel">Note:</label></div>
+      <div><textarea rows="3" name="note" id="note" tabIndex=0></textarea></div>
+      <div>A brief description or note that will appear on the course page</div>
+    </li>
+  </ul>
+    <div class="header">Handicapping</div>
+    <div class="description">Handicaps allow players of all levels to compete against each other. A player's handicap measures how far they tend to be from the average score each week. The handicap rate can be used to soften or amplify the effect of handicaps. If the rate is set to 100, the weekly is fully handicapped, and a player's finish will be tied to how well they play relative to their average performance. A rate less than 100 favors better players and reduces the impact of handicaps a bit. A minimum number of rounds (usually at least two) is required to establish a handicap. The use of handicaps may be delayed so that players have a chance to play the minimum number of rounds. For example, if handicapping starts in week 5, players have the first four weeks to get in two rounds (if the minimum is set to two). Once handicapping is in place, all players with handicaps finish above all players without handicaps.</div>
+  <ul class="form">
+    <li>
+      <div><label for="handicap_rounds">*Handicap Rounds:</label></div>
+      <div><input type="text" id="handicap_rounds" name="handicap_rounds" value="2" tabIndex=0 /></div>
+      <div>The minimum number of rounds required to establish a handicap</div>
+    </li>
+    <li>
+      <div><label for="handicap_start">*Handicap Start:</label></div>
+      <div><input type="text" id="handicap_start" name="handicap_start" value="5" tabIndex=0 /></div>
+      <div>Which weekly to start applying handicaps to</div>
+    </li>
+    <li>
+      <div><label for="handicap_rate">*Handicap Rate:</label></div>
+      <div><input type="text" id="handicap_rate" name="handicap_rate" value="80" tabIndex=0 /></div>
+      <div>The percentage of the difference between a player's average and par that they get back</div>
+    </li>
+  </ul>
+    <div class="header">Entry Fees and Prizes</div>
+    <div class="description">If the weekly costs money to enter and awards prize money, enter those amounts here. A course may also award bonuses for aces and/or eagles, and it might guarantee an initial amount for the first players to win those bonuses.</div>
+  <ul class="form">
+    <li>
+      <div><label for="entry">Entry Fee:</label></div>
+      <div><input type="text" id="entry" name="entry" tabIndex=0 /></div>
+      <div>Entry fee per player</div>
+    </li>
+    <li>
+      <div><label for="prize">Prize money per entry fee:</label></div>
+      <div><input type="text" id="prize" name="prize" tabIndex=0 /></div>
+      <div>How much of each entry fee goes to prize money
+    </li>
+    <li>
+      <div><label for="ace">Ace pot per entry fee:</label></div>
+      <div><input type="text" id="ace" name="ace" tabIndex=0 /></div>
+      <div>How much of each entry fee goes into the ace pot. $1.00 is common.</div>
+    </li>
+    <li>
+      <div><label for="eagle">Eagle pot per entry fee:</label></div>
+      <div><input type="text" id="eagle" name="eagle" tabIndex=0 /></div>
+      <div>How much of each entry fee goes into the eagle pot. Could be half of ace pot.</div>
+    </li>
+    <li>
+      <div><label for="initial_ace">Initial Ace Pot:</label></div>
+      <div><input type="text" id="initial_ace" name="initial_ace" tabIndex=0 /></div>
+      <div>A guaranteed first ace pot</div>
+    </li>
+    <li>
+      <div><label for="initial_eagle">Initial Eagle Pot:</label></div>
+      <div><input type="text" id="initial_eagle" name="initial_eagle" tabIndex=0 /></div>
+      <div>A guaranteed first eagle pot</div>
+    </li>
+
+  <button id="submitButton" type="submit" tabIndex=0>Add Course</button>
+  <input type="hidden" id="courseId" />
+</form>
+</body>
+</html>

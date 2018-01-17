@@ -1,0 +1,100 @@
+<html>
+<head>
+<link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/themes/smoothness/jquery-ui.css">
+<link rel="stylesheet" href="../../css/common.css">
+<link rel="stylesheet" href="../../css/dgw/results.css">
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
+<script src="../../js/common.js"></script>
+<script src="../../js/dgw/common.js"></script>
+<script src="../../js/dgw/results.js"></script>
+<script>
+function launch() {
+    initializeResults();
+}
+</script>
+<title class="title">Weekly results</title>
+</head>
+<body onload="launch()">
+<h2 class="title">Weekly results</h2>
+<form id="form1" method="post" action="update.php">
+  <div id="weeklyContainer">
+    <p>Enter information about the weekly tournament itself below.</p>
+    <div class="inputContainer">
+      <label for="course">Course:</label>
+      <select id="course" name="course" tabindex=0></select>
+    </div>
+    <div id="layoutContainer" class="inputContainer" style="display:none;">
+      <label for="layout">Layout:</label>
+      <select id="layout" name="layout" tabIndex=0></select>
+    </div>
+    <div class="inputContainer">
+      <label for="date">Date:</label>
+      <input type="text" id="date" name="date" tabIndex=0 />
+    </div>
+    <div class="inputContainer">
+      <label for="password">Password:</label>
+      <input type="password" id="password" name="password" tabIndex=0 />
+    </div>
+    <div class="moneyContainer">
+      <span id="courseEntry" class="courseMoney"></span>
+      <span id="courseMoney" class="courseMoney"></span>
+      <span id="coursePurse" class="courseMoney"></span>
+      <span id="courseRemainingPayout" class="courseMoney"></span>
+    </div>
+    <div>
+      <div class="notesContainer">
+	<label for="notes">Notes:</label>
+	<input id="notes" name="notes" tabIndex=0 />
+      </div>
+      <div class="inputContainer">
+	<input type="checkbox" id="manualHandicaps" name="manualHandicaps" />
+	<label for="manualHandicaps">Allow manual handicaps</label>
+      </div>
+    </div>
+  </div>
+  <div id="playerContainer">
+    <ul>
+      <li>Enter player names and scores below. Enter -1 if a player did not finish. Hit Return after typing the score to add to the results.</li>
+      <li class="ace">Enter the hole number(s) for any aces<span class="eagle"> or eagles</span>.</li>
+      <li>Once prize money has been determined, enter each player's winnings (if any). Hit Return to update the remaining payout.</li>
+      <li>To make a change, delete the round from the results and re-enter it.</li>
+      <li>When everything looks right, click the "Post Results" button to submit the results.</li>
+    </ul>
+    <div class="inputContainer">
+      <label for="player">Player:</label>
+      <input type="text" id="player" name="player" tabIndex=0 />
+    </div>
+    <div class="inputContainer">
+      <label for="score">Score:</label>
+      <input type="text" id="score" name="score" tabIndex=0 />
+    </div>
+    <div class="inputContainer" id="handicapContainer" style="display:none;">
+      <label for="handicap">Handicap:</label>
+      <input type="text" id="handicap" name="handicap" tabIndex=0 />
+    </div>
+  </div>
+
+  <ul id="playerDataHeader">
+      <li>
+	<div class="playerName dataCell dataHeader">Player</div>
+	<div class="dataCell dataHeader" id="headerScoreRaw">Score (raw)</div>
+	<div class="dataCell dataHeader" id="headerHandicap">Handicap</div>
+	<div class="dataCell dataHeader" id="headerScoreAdj">Score (adj)</div>
+	<div class="dataCell dataHeader">Prize</div>
+	<div class="dataCell dataHeader">Paid</div>
+	<div class="dataCell dataHeader ace" style="display:none">Ace</div>
+	<div class="dataCell dataHeader eagle" style="display:none">Eagle</div>
+	<div class="dataCell dataHeader">Delete</div>
+      </li>
+  </ul>
+
+  <div class="playerDataContainer">
+    <ol id="playerData"></ol>
+  </div>
+  <button id="submitButton" type="submit" tabIndex=0>Post Results</button>
+  <input type="hidden" name="results" id="playerResults" />
+  <input type="hidden" name="weeklyId" id="weeklyId" />
+</form>
+</body>
+</html>

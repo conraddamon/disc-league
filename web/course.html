@@ -1,0 +1,284 @@
+<?php
+#-----------------------------------------------------------------------------#
+# File: course.html
+# Author: Conrad Damon
+# Date: 01/09/2017
+#
+# Displays results and stats for the given course (provided in query string as 'id').
+#-----------------------------------------------------------------------------#
+
+require_once('db.php');
+require_once('log.php');
+require_once('util.php');
+
+$potCap = 500;
+
+# fetch course data
+$courseId = get_input('id', 'get');
+$sql = "SELECT * FROM course WHERE id=$courseId";
+$courseResult = db_query($sql, 'one');
+$courseNote = $courseResult['note'];
+$hcapRounds = $courseResult['handicap_rounds'];
+$hcapStart = $courseResult['handicap_start'];
+$hcapRate = $courseResult['handicap_rate'];
+$courseLayouts = $courseResult['layouts'];
+
+# fetch all the weeklies that have happened at the course
+$sql = "SELECT * FROM weekly WHERE course_id=$courseId ORDER BY date";
+$weeklyResult = db_query($sql);
+
+$title = $courseResult['name'] . " Disc Golf Weekly";
+
+if (!$weeklyResult) {
+  echo "<h1>$title</h1>\n";
+  echo "No weeklies have been recorded yet.\n";
+  die();
+}
+
+# get total number of rounds (DNF doesn't count); should match sum of rounds in handicap table
+$sql = "SELECT COUNT(r.id) FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND score!=-1";
+$numRounds = db_query($sql, 'count');
+
+# figure out how many different players have played weeklies here
+$sql = "SELECT COUNT(DISTINCT r.player_id) FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId";
+$numPlayers = db_query($sql, 'count');
+
+# fetch players who have played at this course
+$sql = "SELECT DISTINCT p.id,p.name FROM player p, round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE r.player_id=p.id AND w.course_id=$courseId";
+$result = db_query($sql);
+foreach ($result as $p) {
+  $player[$p['id']] = $p['name'];
+}
+
+# get player handicaps and rounds played for this course
+$sql = "SELECT player_id, rounds, handicap FROM `handicap` WHERE course_id=$courseId";
+$result = db_query($sql);
+foreach ($result as $r) {
+  $rounds[$r['player_id']] = $r['rounds'];
+  $handicap[$r['player_id']] = $r['handicap'];
+}
+
+# get total winnings for each player
+$sql = "SELECT player_id, SUM(winnings) AS 'total' FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId GROUP BY player_id";
+$result = db_query($sql);
+foreach ($result as $w) {
+  $winnings[$w['player_id']] = $w['total'];
+}
+
+# get amount owed to those who haven't collected
+$sql = "SELECT player_id, SUM(winnings) AS 'total' FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND r.paid=false GROUP BY player_id";
+$result = db_query($sql);
+foreach ($result as $u) {
+  $unpaid[$u['player_id']] = $u['total'];
+}
+
+# only show a few weeklies at the top, and the rest down below after player stats
+$weeklies = array_reverse($weeklyResult);
+$recentWeeklies = array_slice($weeklies, 0, 5);
+$olderWeeklies = array_slice($weeklies, 5);
+
+echo <<< EOF
+<html>
+<head>
+<link rel="stylesheet" href="../css/dgw/course.css">
+<script src="../js/common.js"></script>
+<script src="../js/dgw/common.js"></script>
+<script src="../js/dgw/course.js"></script>
+<title>$title</title>
+</head>
+<body onload='sortTable(null, "name");'>
+<h1>$title</h1>
+<h2>Recent Results</h2>
+<div>
+<ul>
+EOF;
+
+# make date of each weekly a link to its results
+foreach ($recentWeeklies as $w) {
+  $weeklyId = $w['id'];
+  $date = formatDate($w['date']);
+  echo "<li><a href='weekly.html?id=$weeklyId'>$date</a></li>\n";
+}
+
+if ($courseNote) {
+  $courseNote = "<p>$courseNote</p>\n";
+}
+
+# tell folks if handicapping is not yet in play
+if (count($weeklyResult) < $hcapStart) {
+  $suffix = $hcapStart == 1 ? "st" : $hcapStart == 2 ? "nd" : "th";
+  $start = "$hcapStart$suffix weekly";
+  $startText = "Handicaps will start being used with the $hcapStart$suffix weekly. ";
+}
+
+# figure out course record in each layout
+$recordText = '';
+$layouts = preg_split("/,\s*/", $courseLayouts);
+foreach ($layouts as $layout) {
+  $sql = "SELECT MIN(r.score) score FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.no_record=false AND r.score!=-1 AND w.layout='$layout'";
+  $result = db_query($sql, 'one');
+  if (!$result) {
+    continue;
+  }
+  $score = $result['score'];
+  if ($score > 0) {
+    $sql = "SELECT r.player_id, w.date FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.no_record=false AND w.layout='$layout' AND r.score=$score ORDER BY date";
+    $result = db_query($sql);
+    $records = array();
+    foreach ($result as $r) {
+      $p = $player[$r['player_id']];
+      array_push($records, "$p on " . date("M j, Y", strtotime($r['date'])));
+    }
+    $recordText .= "<p>Course record";
+    if (count($layouts) > 1) {
+      $recordText .= " ($layout)";
+    }
+    $recordText .= ": " . $score . " by " . implode(" and by ", $records) . "</p>";
+  }
+}
+
+$bonusText = get_bonus_pots($courseId);
+
+$statsText = "<p>There have been $numRounds weekly rounds so far by $numPlayers different players.</p>\n";
+
+# show the header for the player stats table; the stats themselves will be displayed via JS
+echo <<< EOF
+</ul></div>
+$courseNote
+$recordText
+$bonusText
+<p>$startText Your handicap is $hcapRate% of the average number of strokes between you and par (the average score that week) for each round. It takes $hcapRounds rounds to establish a handicap. The handicaps below include scores from the most recent round, so they may differ from the handicaps that applied to that round. The handicaps below will apply to the next weekly.</p>
+$statsText
+<p><a href="admin/course.html?id=$courseId">Edit Course</a> (requires password)</p>
+<h2>Players</h2>
+<table name='stats' id='statsTable'>
+<tr align=left>
+  <th id='name'><a href='#stats' onclick='sortTable(event)'>Name</a></th>
+  <th id='rounds'><a href='#stats' onclick='sortTable(event)'>Rounds</a></th>
+  <th id='handicap'><a href='#stats' onclick='sortTable(event)'>Handicap</a></th>
+  <th id='winnings'><a href='#stats' onclick='sortTable(event)'>Winnings</a></th>
+  <th id='unpaid'><a href='#stats' onclick='sortTable(event)'>Unpaid</a></th>
+</tr>
+</table>
+EOF;
+
+if (count($olderWeeklies) > 0) {
+  echo <<< EOF
+<h2>Older Results</h2>
+<div>
+<ul>
+EOF;
+
+  foreach ($olderWeeklies as $w) {
+    $courseId = $w['id'];
+    $date = date("M j, Y", strtotime($w['date']));
+    echo "<li><a href='weekly.html?id=$courseId'>$date</a></li>\n";
+  }
+
+echo <<< EOF
+</ul></div>
+EOF;
+}
+
+echo <<< EOF
+</body>
+<script>
+   window.playerData = {
+EOF;
+
+# pass players stats to the browser as JSON so we can do client-side sorting
+$players = array_keys($player);
+$last = $players[count($players) - 1];
+foreach ($players as $p) {
+  echo player_data($p);
+}
+
+echo <<< EOF
+};
+</script>
+</html>
+EOF;
+
+# returns a JSON representation of player data in a hash of hashes like so:
+#     {'Fred Flintstone':{'rounds':3,winnings:23.50,unpaid:0}}
+function player_data($pid) {
+
+  global $player, $rounds, $winnings, $unpaid, $handicap, $last;
+
+  $r = isset($rounds[$pid]) ? $rounds[$pid] : 0;
+  $w = isset($winnings[$pid]) ? $winnings[$pid] : 0;
+  $u = isset($unpaid[$pid]) ? $unpaid[$pid] : 0;
+
+  $out = quote($player[$pid]) . ':{' . "'rounds':" . $r . ",'winnings':" . $w . ",'unpaid':" . $u;
+
+  $hcap = $handicap[$pid];
+  if (isset($hcap)) {
+    $out .= ",'handicap':" . $hcap;
+  }
+
+  $out .= "}";
+  if ($pid != $last) {
+    $out .= ",";
+  }
+  $out .= "\n";
+
+  return $out;
+}
+
+# Calculates and returns text related to ace and eagle pots. It starts with the current value, then
+# summarizes each time one of them was hit.
+function get_bonus_pots($courseId) {
+
+  global $courseResult, $player, $potCap;
+
+  // get all the aces and eagles for this course
+  $sql = "SELECT r.ace,r.eagle,r.weekly_id,r.player_id,w.date FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND (r.ace != '' OR r.eagle != '') ORDER BY w.id";
+  $result = db_query($sql);
+  if (!$result) {
+    return '';
+  }
+
+  $pots = array();
+  $winners = array();
+  $types = array('ace', 'eagle');
+  foreach ($types as $type) {
+    $potEntry = $courseResult[$type];
+    $initialPot = $courseResult['initial_' . $type];
+    $start = 0;
+    foreach ($result as $r) {
+      if (!$r[$type]) {
+	continue;
+      }
+      $end = $r['weekly_id'];
+      if ($start == 0 && $initialPot > 0) {
+	$prize = $initialPot;
+      }
+      else {
+	// figure out how many rounds were played to build this pot
+	$sql = "SELECT COUNT(*) FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.id > $start AND w.id <= $end";
+	$rounds = db_query($sql, 'count');
+	$prize = $rounds * $potEntry;
+      }
+      $start = $end;
+      $holes = preg_split("/[\s,]+/", $r[$type]);
+      $holeText = count($holes) > 1 ? 'holes ' . implode(' and ', $holes) : 'hole ' . $r[$type];
+      $text = "<p>On " . formatDate($r['date']) . ", " . $player[$r['player_id']] . " hit the $type pot on " . $holeText . " for " . formatMoney($prize) . "</p>\n";
+      array_push($winners, $text);
+    }
+
+    // figure out how much the pots are worth now
+    $sql = "SELECT COUNT(*) FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.id > $start";
+    $rounds = db_query($sql, 'count');
+    $prize = $rounds * $potEntry;
+    $nextText = "";
+    if ($prize > $potCap) {
+      $next = $prize - $potCap;
+      $nextText = " (capped, " . formatMoney($next) . "  goes to next pot)";
+      $prize = $potCap;
+    }
+    array_push($pots, "<p>" . ucfirst($type) . " pot: " . formatMoney($prize) . "$nextText</p>");
+  }
+
+  return implode('', $pots) . implode('', $winners);
+}
+?>
