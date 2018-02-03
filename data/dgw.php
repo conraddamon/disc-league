@@ -8,6 +8,11 @@
 # managing disc golf weeklies.
 #-----------------------------------------------------------------------------#
 
+# Minimal security check to prevent direct access to REST calls
+if ($_SERVER['HTTP_X_REQUESTED_WITH'] !== 'XMLHttpRequest') {
+  exit('');
+}
+
 require_once('db.php');
 require_once('log.php');
 require_once('util.php');
