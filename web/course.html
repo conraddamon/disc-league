@@ -245,6 +245,7 @@ function get_bonus_pots($courseId) {
     $potEntry = $courseResult[$type];
     $initialPot = $courseResult['initial_' . $type];
     $start = 0;
+    $forward = 0;
     foreach ($result as $r) {
       if (!$r[$type]) {
 	continue;
@@ -258,6 +259,10 @@ function get_bonus_pots($courseId) {
 	$sql = "SELECT COUNT(*) FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.id > $start AND w.id <= $end";
 	$rounds = db_query($sql, 'count');
 	$prize = $rounds * $potEntry;
+	if ($prize > $potCap) {
+	  $forward = $prize - $potCap;
+	  $prize = $potCap;
+	}
       }
       $start = $end;
       $holes = preg_split("/[\s,]+/", $r[$type]);
@@ -269,7 +274,7 @@ function get_bonus_pots($courseId) {
     // figure out how much the pots are worth now
     $sql = "SELECT COUNT(*) FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.id > $start";
     $rounds = db_query($sql, 'count');
-    $prize = $rounds * $potEntry;
+    $prize = $forward + ($rounds * $potEntry);
     $nextText = "";
     if ($prize > $potCap) {
       $next = $prize - $potCap;
