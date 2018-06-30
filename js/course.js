@@ -1,6 +1,6 @@
 /*
-   Code to let the user sort the stats table. Very little error-checking is done.
-*/
+ * Code to let the user sort the stats table. Very little error-checking is done.
+ */
 
 /**
  * @param ev browser click event
@@ -22,9 +22,17 @@ function sortTable(ev, field) {
 	    p = window.playerData[player],
 	    rounds = p.rounds || ' ',
 	    hcap = p.handicap == undefined ? ' ' : p.handicap,
-	    row = table.rows[i + 1] || table.insertRow();
+	    avg = p.average,
+	    best = p.best,
+	    row = table.rows[i + 1] || table.insertRow(),
+	    html;
 
-	row.innerHTML = '<td>' + player + '</td><td>' + rounds + '</td><td>' + hcap + '</td><td>' + formatMoney(p.winnings) + '</td><td>' + formatMoney(p.unpaid) + '</td>';
+	html = '<td>' + (i + 1) + '</td><td>' + player + '</td><td>' + rounds + '</td><td>' + hcap + '</td><td>' + formatMoney(p.winnings) + '</td><td>' + formatMoney(p.unpaid) + '</td>';
+        window.courseLayouts.forEach(layout => {
+		html += '<td>' + (avg[layout] || ' ') + '</td>';
+		html += '<td>' + (best[layout] || ' ') + '</td>';
+	    });
+	row.innerHTML = html;
 
 	totalRounds += p.rounds;
 	totalWinnings += p.winnings;
@@ -48,12 +56,18 @@ function sortPlayers(field) {
 
     var players = Object.keys(window.playerData);
 
+    if (field.indexOf('-') !== -1) {
+	let parts = field.split('-');
+	return players.sort(sortByLayoutValue(...parts));
+    }
+
     switch(field) {
         case 'name': return players.sort(by_name);
         case 'handicap': return players.sort(by_handicap);
         case 'rounds':
         case 'winnings':
-        case 'unpaid': return players.sort(sortByValue(field));
+        case 'unpaid': 
+        default: return players.sort(sortByValue(field));
     }
 }
 
@@ -90,5 +104,19 @@ function sortByValue(field) {
 	    valueB = playerB[field];
 
 	return valueA != valueB ? valueB - valueA : by_name(a, b);
+    }
+}
+
+// Returns a sort function for the given compound field (one that varies by layout), sorting from low to high.
+function sortByLayoutValue(field, layout) {
+
+    return function(a, b) {
+
+	var playerA = window.playerData[a],
+	    playerB = window.playerData[b],
+	    valueA = playerA[field][layout] || 999,
+	    valueB = playerB[field][layout] || 999;
+
+	return valueA != valueB ? valueA - valueB : by_name(a, b);
     }
 }

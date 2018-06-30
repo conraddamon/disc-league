@@ -113,6 +113,7 @@ if (count($weeklyResult) < $hcapStart) {
 
 # figure out course record in each layout
 $recordText = '';
+$headerText = '';
 $layouts = preg_split("/,\s*/", $courseLayouts);
 foreach ($layouts as $layout) {
   $sql = "SELECT MIN(r.score) score FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.no_record=false AND r.score!=-1 AND w.layout='$layout'";
@@ -135,6 +136,21 @@ foreach ($layouts as $layout) {
     }
     $recordText .= ": " . $score . " by " . implode(" and by ", $records) . "</p>";
   }
+
+  $sql = "SELECT player_id, ROUND(AVG(score), 1) AS 'average' FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.layout='$layout' AND r.score > 0 AND NOT w.no_record GROUP BY player_id";
+  $result = db_query($sql);
+  foreach ($result as $r) {
+    $average[$r['player_id']][$layout] = $r['average'];
+  }
+
+  $sql = "SELECT player_id, MIN(score) AS 'best' FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.layout='$layout' AND r.score > 0 AND NOT w.no_record GROUP BY player_id";
+  $result = db_query($sql);
+  foreach ($result as $r) {
+    $best[$r['player_id']][$layout] = $r['best'];
+  }
+
+  $headerText .= "<th id='average-$layout'><a href='#stats' onclick='sortTable(event)'>Average ($layout)</a></th>";
+  $headerText .= "<th id='best-$layout'><a href='#stats' onclick='sortTable(event)'>Best ($layout)</a></th>";
 }
 
 $bonusText = get_bonus_pots($courseId);
@@ -153,11 +169,13 @@ $statsText
 <h2>Players</h2>
 <table name='stats' id='statsTable'>
 <tr align=left>
+  <th id='num'>#</a></th>
   <th id='name'><a href='#stats' onclick='sortTable(event)'>Name</a></th>
   <th id='rounds'><a href='#stats' onclick='sortTable(event)'>Rounds</a></th>
   <th id='handicap'><a href='#stats' onclick='sortTable(event)'>Handicap</a></th>
   <th id='winnings'><a href='#stats' onclick='sortTable(event)'>Winnings</a></th>
   <th id='unpaid'><a href='#stats' onclick='sortTable(event)'>Unpaid</a></th>
+  $headerText
 </tr>
 </table>
 EOF;
@@ -195,15 +213,25 @@ foreach ($players as $p) {
 
 echo <<< EOF
 };
+  window.courseLayouts = [
+EOF;
+
+foreach ($layouts as $layout) {
+  $quotedLayouts[] = quote($layout);
+}
+echo implode(',', $quotedLayouts);
+
+echo <<< EOF
+];
 </script>
 </html>
 EOF;
 
 # returns a JSON representation of player data in a hash of hashes like so:
-#     {'Fred Flintstone':{'rounds':3,winnings:23.50,unpaid:0}}
+#     {'Fred Flintstone':{'rounds':3,winnings:23.50,unpaid:0},average:{main:65,alternate:67},best:{main:55,alternate:57}}
 function player_data($pid) {
 
-  global $player, $rounds, $winnings, $unpaid, $handicap, $last;
+  global $player, $rounds, $winnings, $unpaid, $handicap, $last, $layouts, $average, $best;
 
   $r = isset($rounds[$pid]) ? $rounds[$pid] : 0;
   $w = isset($winnings[$pid]) ? $winnings[$pid] : 0;
@@ -215,6 +243,24 @@ function player_data($pid) {
   if (isset($hcap)) {
     $out .= ",'handicap':" . $hcap;
   }
+
+  $out .= ",'average':{";
+  foreach ($layouts as $layout) {
+    $avg = $average[$pid][$layout];
+    if ($avg > 0) {
+      $out .= "'$layout':$avg,";
+    }
+  }
+  $out .= "}";
+
+  $out .= ",'best':{";
+  foreach ($layouts as $layout) {
+    $b = $best[$pid][$layout];
+    if ($b > 0) {
+      $out .= "'$layout':$b,";
+    }
+  }
+  $out .= "}";
 
   $out .= "}";
   if ($pid != $last) {
