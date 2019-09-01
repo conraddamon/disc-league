@@ -22,6 +22,7 @@ $pw_master = 'wfuIyceA0.YCA';
 $op = get_input('op', 'get');
 elog(LOG_INFO, "dgw.php, op=$op");
 
+$option = null;
 if ($op == 'load-course') {
   $cid = get_input('courseId', 'get');
   $sql = "SELECT * FROM course WHERE 1";

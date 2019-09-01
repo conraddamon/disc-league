@@ -14,6 +14,14 @@ function sortTable(ev, field) {
 	table = document.getElementById('statsTable');
     
     var totalRounds = totalWinnings = totalUnpaid = 0;
+    var handicaps = { total: 0, num: 0 };
+    var averages = {};
+    var bests = {};
+    window.courseLayouts.forEach(layout => {
+	    averages[layout] = { total: 0, num: 0 };
+	    bests[layout] = { total: 0, num: 0 };
+	});
+
 
     // re-layout table based on new sort order; table rows will be created if they don't exist (first time through)
     for (var i = 0; i < players.length; i++) {
@@ -31,19 +39,38 @@ function sortTable(ev, field) {
         window.courseLayouts.forEach(layout => {
 		html += '<td>' + (avg[layout] || ' ') + '</td>';
 		html += '<td>' + (best[layout] || ' ') + '</td>';
+		if (avg[layout]) {
+		    averages[layout].total += avg[layout];
+		    averages[layout].num++;
+		}
+		if (best[layout]) {
+		    bests[layout].total += best[layout];
+		    bests[layout].num++;
+		}
 	    });
 	row.innerHTML = html;
 
 	totalRounds += p.rounds;
 	totalWinnings += p.winnings;
 	totalUnpaid += p.unpaid;
+
+	if (p.handicap != null) {
+	    handicaps.total += p.handicap;
+	    handicaps.num++;
+	}
     }
+
+    var avgHandicap = (handicaps.total / handicaps.num).toFixed(2);
+    var avgMainAverage = (averages.main.total / averages.main.num).toFixed(2);
+    var avgMainBest = (bests.main.total / bests.main.num).toFixed(2);
+    var avgAltAverage = (averages.alternate.total / averages.alternate.num).toFixed(2);
+    var avgAltBest = (bests.alternate.total / bests.alternate.num).toFixed(2);
 
     row = document.getElementById('totalRow');
     if (!row) {
 	row = table.insertRow();
 	row.id = 'totalRow';
-	row.innerHTML = '<td>TOTAL</td><td>' + totalRounds + '</td><td></td><td>' + formatMoney(totalWinnings) + '</td><td>' + formatMoney(totalUnpaid) + '</td>';
+	row.innerHTML = '<td></td><td>Total / Average</td><td>' + totalRounds + '</td><td>' + avgHandicap + '</td><td>' + formatMoney(totalWinnings) + '</td><td>' + formatMoney(totalUnpaid) + '</td><td>' + avgMainAverage + '</td><td>' + avgMainBest + '</td><td>' + avgAltAverage + '</td><td>' + avgAltBest + '</td>';
     }
 }
 

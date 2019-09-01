@@ -35,6 +35,10 @@ if (!$weeklyResult) {
   die();
 }
 
+# get total number of paid rounds
+$sql = "SELECT COUNT(r.id) FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId";
+$paidRounds = db_query($sql, 'count');
+
 # get total number of rounds (DNF doesn't count); should match sum of rounds in handicap table
 $sql = "SELECT COUNT(r.id) FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND score!=-1";
 $numRounds = db_query($sql, 'count');
@@ -105,6 +109,7 @@ if ($courseNote) {
 }
 
 # tell folks if handicapping is not yet in play
+$startText = '';
 if (count($weeklyResult) < $hcapStart) {
   $suffix = $hcapStart == 1 ? "st" : $hcapStart == 2 ? "nd" : "th";
   $start = "$hcapStart$suffix weekly";
@@ -155,7 +160,7 @@ foreach ($layouts as $layout) {
 
 $bonusText = get_bonus_pots($courseId);
 
-$statsText = "<p>There have been $numRounds weekly rounds so far by $numPlayers different players.</p>\n";
+$statsText = "<p>There have been $paidRounds total weekly rounds ($numRounds with scores reported) so far by $numPlayers different players.</p>\n";
 
 # show the header for the player stats table; the stats themselves will be displayed via JS
 echo <<< EOF
@@ -239,14 +244,14 @@ function player_data($pid) {
 
   $out = quote($player[$pid]) . ':{' . "'rounds':" . $r . ",'winnings':" . $w . ",'unpaid':" . $u;
 
-  $hcap = $handicap[$pid];
+  $hcap = isset($handicap[$pid]) ? $handicap[$pid] : null;
   if (isset($hcap)) {
     $out .= ",'handicap':" . $hcap;
   }
 
   $out .= ",'average':{";
   foreach ($layouts as $layout) {
-    $avg = $average[$pid][$layout];
+    $avg = isset($average[$pid][$layout]) ? $average[$pid][$layout] : -1;
     if ($avg > 0) {
       $out .= "'$layout':$avg,";
     }
@@ -255,7 +260,7 @@ function player_data($pid) {
 
   $out .= ",'best':{";
   foreach ($layouts as $layout) {
-    $b = $best[$pid][$layout];
+    $b = isset($best[$pid][$layout]) ? $best[$pid][$layout] : -1;
     if ($b > 0) {
       $out .= "'$layout':$b,";
     }
@@ -279,6 +284,7 @@ function get_bonus_pots($courseId) {
 
   // get all the aces and eagles for this course
   $sql = "SELECT r.ace,r.eagle,r.weekly_id,r.player_id,w.date FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND (r.ace != '' OR r.eagle != '') ORDER BY w.id";
+elog(LOG_INFO, $sql);
   $result = db_query($sql);
   if (!$result) {
     return '';
@@ -304,11 +310,14 @@ function get_bonus_pots($courseId) {
 	// figure out how many rounds were played to build this pot
 	$sql = "SELECT COUNT(*) FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.id > $start AND w.id <= $end";
 	$rounds = db_query($sql, 'count');
-	$prize = $rounds * $potEntry;
+	$prize = ($rounds * $potEntry) + $forward;
 	if ($prize > $potCap) {
 	  $forward = $prize - $potCap;
 	  $prize = $potCap;
 	}
+        else {
+          $forward = 0;
+        }
       }
       $start = $end;
       $holes = preg_split("/[\s,]+/", $r[$type]);
@@ -319,6 +328,7 @@ function get_bonus_pots($courseId) {
 
     // figure out how much the pots are worth now
     $sql = "SELECT COUNT(*) FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.id > $start";
+elog(LOG_INFO, "Now has: " . $sql);
     $rounds = db_query($sql, 'count');
     $prize = $forward + ($rounds * $potEntry);
     $nextText = "";
@@ -327,7 +337,7 @@ function get_bonus_pots($courseId) {
       $nextText = " (capped, " . formatMoney($next) . "  goes to next pot)";
       $prize = $potCap;
     }
-    array_push($pots, "<p>" . ucfirst($type) . " pot: " . formatMoney($prize) . "$nextText</p>");
+    array_push($pots, "<p>" . ucfirst($type) . " pot: " . formatMoney($prize, 0) . "$nextText</p>");
   }
 
   return implode('', $pots) . implode('', $winners);

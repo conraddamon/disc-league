@@ -100,7 +100,7 @@ echo <<< EOF
 </head>
 <body>
 <h1>$titleLink</h1>
-<p>Par was $par. The low scratch score of the day was $low_score by $low_scorers.</p>
+<p>The average score was $par. The low scratch score of the day was $low_score by $low_scorers.</p>
 $notes
 <table cellspacing=15>
 <tr align=left><th>Place</th><th>Player</th><th>Raw Score</th><th>Handicap</th><th>Score</th><th>Prize</th></tr>
@@ -108,19 +108,27 @@ EOF;
 
 # Display the results in a table
 
+$hasManualHandicap = false;
+$hasNoScore = false;
+$hasUnpaid = false;
+
 # we don't use foreach since we need $i for figuring out place
+$prevScore = null;
 for ($i = 0; $i < count($players); $i++) {
   $pid = $players[$i];
   $r = $round[$pid];
+  $dnf = false;
   
   $player = $r['name'];
   $score = $r['score'];
   if ($score == -1) {
-    $score = "DNF";
+    $score = "NS";
     $dnf = true;
+    $hasNoScore = true;
   }
   $hcap = !$dnf ? $r['player_handicap'] : ' ';
   if ($hcap && $r['manual_handicap']) {
+    $hasManualHandicap = true;
     $hcap = '(' . $hcap . ')';
   }
   $adjScore = !$dnf ? $r['adjusted_score'] : ' ';
@@ -129,8 +137,12 @@ for ($i = 0; $i < count($players); $i++) {
     $prize = ' ';
   }
   else {
-    $unpaid = $prize > 0 && !$r['paid'] ? '*' : '';
-    $prize = formatMoney($prize, ' ') . $unpaid;
+    $isUnpaid = $prize > 0 && !$r['paid'];
+    $prize = formatMoney($prize, ' ');
+    if ($isUnpaid) {
+      $prize .= '*';
+      $hasUnpaid = true;
+    }
   }
   $place = $i + 1;
   if ($adjScore == $prevScore) {
@@ -142,12 +154,21 @@ for ($i = 0; $i < count($players); $i++) {
   echo "<tr align=left><td>$place</td><td>$player</td><td>$score</td><td>$hcap</td><td>$adjScore</td><td>$prize</td></tr>\n";
 }
 
-echo <<< EOF
-</table>
+echo "</table>";
+if ($hasNoScore) {
+  echo "<p>NS = Did not finish (DNF), or no score reported</p>";
+}
+if ($hasUnpaid) {
+  echo <<< EOF
 <p>* Uncollected winnings. To collect, send payment information (PayPal, home address, etc) to 
 <a href="mailto:$contactEmail">$contactName</a>.</p>
-<p>() means estimated handicap</p>
-<p><a href="admin/results.html?weeklyId=$id">Edit results</a> (requires password)</p>
+EOF;
+}
+if ($hasManualHandicap) {
+  echo "<p>() means estimated handicap</p>";
+}
+echo <<< EOF
+<!-- <p><a href="admin/results.html?weeklyId=$id">Edit results</a> (requires password)</p> -->
 </body>
 </html>
 EOF;
