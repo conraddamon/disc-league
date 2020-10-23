@@ -109,8 +109,8 @@ input.invalid {
     <div class="description">Handicaps allow players of all levels to compete against each other. A player's handicap measures how far they tend to be from the average score each week. The handicap rate can be used to soften or amplify the effect of handicaps. If the rate is set to 100, the weekly is fully handicapped, and a player's finish will be tied to how well they play relative to their average performance. A rate less than 100 favors better players and reduces the impact of handicaps a bit. A minimum number of rounds (usually at least two) is required to establish a handicap. The use of handicaps may be delayed so that players have a chance to play the minimum number of rounds. For example, if handicapping starts in week 5, players have the first four weeks to get in two rounds (if the minimum is set to two). Once handicapping is in place, all players with handicaps finish above all players without handicaps.</div>
   <ul class="form">
     <li>
-      <div><label for="handicap_rounds">*Handicap Rounds:</label></div>
-      <div><input type="text" id="handicap_rounds" name="handicap_rounds" value="2" tabIndex=0 /></div>
+      <div><label for="handicap_min_rounds">*Handicap Minimum Rounds:</label></div>
+      <div><input type="text" id="handicap_min_rounds" name="handicap_min_rounds" value="2" tabIndex=0 /></div>
       <div>The minimum number of rounds required to establish a handicap</div>
     </li>
     <li>
@@ -122,6 +122,11 @@ input.invalid {
       <div><label for="handicap_rate">*Handicap Rate:</label></div>
       <div><input type="text" id="handicap_rate" name="handicap_rate" value="80" tabIndex=0 /></div>
       <div>The percentage of the difference between a player's average and par that they get back</div>
+    </li>
+    <li>
+      <div><label for="handicap_num_rounds">*Handicap Rounds:</label></div>
+      <div><input type="text" id="handicap_num_rounds" name="handicap_num_rounds" value="10" tabIndex=0 /></div>
+      <div>The number of most recent rounds to figure into a player's handicap.</div>
     </li>
   </ul>
     <div class="header">Entry Fees and Prizes</div>

@@ -18,7 +18,7 @@ $editMode = ($courseId > 0);
 elog(LOG_INFO, "post to course.php, edit mode: " . $editMode);
 
 $textFields = array('name', 'contact_name', 'contact_email', 'password', 'layouts', 'location', 'note');
-$numericFields = array('entry', 'prize', 'ace', 'eagle', 'handicap_rounds', 'handicap_start', 'handicap_rate', 'initial_ace', 'initial_eagle');
+$numericFields = array('entry', 'prize', 'ace', 'eagle', 'handicap_min_rounds', 'handicap_start', 'handicap_rate', 'handicap_num_rounds', 'initial_ace', 'initial_eagle');
 $moneyFields = array('entry', 'prize', 'ace', 'eagle', 'initial_ace', 'initial_eagle');
 $allFields = array_merge($textFields, $numericFields);
 elog(LOG_INFO, "count: " . count($allFields));

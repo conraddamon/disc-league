@@ -5,7 +5,7 @@
 /**
  * Sets up key handlers, adds a date picker, and sets up form submission.
  */
-function initializeResults() {
+async function initializeResults() {
 
     // handle Enter key
     $(':text').on('keypress keydown keyup', keyHandler);
@@ -37,8 +37,16 @@ function initializeResults() {
     window.qs = parseQueryString();
 
     // fetch data
-    getCourse(handleCourseInfo);
-    getPlayer(handlePlayerInfo);
+    const courseData = await sendRequestAsync('load-course');
+    handleCourseInfo(courseData);
+    const playerData = await sendRequestAsync('load-player');
+    handlePlayerInfo(playerData);
+
+    const weeklyToEdit = window.qs.weeklyId;
+    if (weeklyToEdit) {
+	window.weeklyData = await sendRequestAsync('get-weekly', { weeklyId: weeklyToEdit });
+	window.weeklyResults = await sendRequestAsync('get-results', { weeklyId: weeklyToEdit });
+    }
 }
 
 /**
@@ -96,7 +104,7 @@ function handleManualHandicaps(e) {
  *
  * @param {Object} data    Course data from db
  */
-function handleCourseInfo(data) {
+async function handleCourseInfo(data) {
 
     // Change current course when user picks a different course
     $('#course').on('change', onCourseSelected);
@@ -107,16 +115,9 @@ function handleCourseInfo(data) {
 
     for (var i = 0; i < data.length; i++) {
 	var course = data[i];
-	if (isTest && course.name !== 'Test') {
-	    continue;
-	}
-	
 	var option = new Option(course.name, course.id);
 	cd[course.id] = course;
 	$('#course').append($(option));
-	if (isTest) {
-	    courseToSelect = course.id;
-	}
     }
 
     // select first course by default
@@ -129,16 +130,26 @@ function handleCourseInfo(data) {
  *
  * @param {Object} data    Player data from db
  */
-function handlePlayerInfo(data) {
+async function handlePlayerInfo(data) {
 
     saveNames(data);
     addNameAutocomplete(getNameList(data));
+    window.paypal = {};
+    data.forEach(person => {
+	    if (person.paypal) {
+		window.paypal[person.id] = person.paypal;
+	    }
+	});
 
     if (window.qs.weeklyId) {
 	window.editMode = true;
-	sendRequest('get-weekly',  { weeklyId: window.qs.weeklyId }, gotWeekly).then(function() {
-		sendRequest('get-results', { weeklyId: window.qs.weeklyId }, gotResults);
-	    });
+	// sendRequest('get-weekly',  { weeklyId: window.qs.weeklyId }, gotWeekly).then(function() {
+	//	sendRequest('get-results', { weeklyId: window.qs.weeklyId }, gotResults);
+	//    });
+	const weeklyData = await sendRequestAsync('get-weekly',  { weeklyId: window.qs.weeklyId });
+	gotWeekly(weeklyData);
+	const resultData = await sendRequestAsync('get-results', { weeklyId: window.qs.weeklyId });
+	gotResults(resultData);
     }
 }
 
@@ -149,7 +160,7 @@ function handlePlayerInfo(data) {
  * @param {Event} e    Browser event
  * @param {int} value  [optional] course ID to force selection
  */
-function onCourseSelected(e, value) {
+async function onCourseSelected(e, value) {
 
     value = value || this.value;
 
@@ -209,6 +220,9 @@ function onCourseSelected(e, value) {
 	$('#courseMoney').text(moneyText.join(' / ') + " money per entry: " + money.join(' / '));
     }
 
+    // get handicaps
+    window.handicaps = await calculateHandicaps(course.id, course.handicap_min_rounds, course.handicap_num_rounds, course.handicap_rate, window.qs.weeklyId);
+
     // find out how many weeklies this course has had (to know whether handicapping is in effect)
     if (course.numWeeklies == null) {
 	getNumWeeklies(course.id, handleNumWeeklies);
@@ -221,10 +235,11 @@ function onCourseSelected(e, value) {
  * @param {int}      courseId    Course ID
  * @param {Function} callback    Function to call with results
  */
-function getNumWeeklies(courseId, callback) {
+async function getNumWeeklies(courseId, callback) {
 
     callback = callback.bind(null, courseId);
-    sendMessage('get-num-weeklies', callback, { courseId: courseId });
+    const data = await sendRequestAsync('get-num-weeklies', { courseId: courseId });
+    callback(data);
 }
 
 /**
@@ -234,7 +249,7 @@ function getNumWeeklies(courseId, callback) {
 
  * @param {Function} callback    Function to call with results
  */
-function handleNumWeeklies(courseId, numWeeklies) {
+async function handleNumWeeklies(courseId, numWeeklies) {
 
     var course = window.courseData[courseId];
 
@@ -253,10 +268,9 @@ function handleNumWeeklies(courseId, numWeeklies) {
 }
 
 /**
- * Starts the process of adding a player data row to the table. If the player is new, add them. If the
- * player is known, fetch their handicap (if handicapping is in effect).
+ * Starts the process of adding a player data row to the table. If the player is new, add them.
  */
-function addScore() {
+async function addScore() {
 
     var player = $('#player').val(),
 	score = $('#score').val();
@@ -266,10 +280,10 @@ function addScore() {
     }
 
     if (!window.personId[player]) {
-	addPlayer(player, score, handlePlayerAdd);
-    }
-    else if (window.handicapping && !$('#handicap').val()) {
-	getHandicap(player, score, handleHandicap);
+	const playerId = await sendRequestAsync('add-player', { player: player });
+	window.personData[playerId] = { name: player };
+	window.personId[player] = playerId;
+	showScore(player, score, playerId);
     }
     else {
 	showScore(player, score);
@@ -277,75 +291,24 @@ function addScore() {
 }
 
 /**
- * Fetches the given player's handicap.
+ * Adds a row to the table of player scores. Calculates and shows the adjusted score.
  *
- * @param {String}   player      Player name
- * @param {int}      score       Player score
- * @param {Function} callback    Function to call with results
+ * @param {string}   player      Player name
+ * @param {string}   score       Player score
  */
-function getHandicap(player, score, callback) {
+function showScore(player, score) {
 
-    callback = callback.bind(null, player, score);
-    sendMessage('get-handicap', callback, { courseId: $('#course').val(), playerId: window.personId[player] });
-}
+    score = Number(score);
 
-/**
- * Adds a player to the database.
- *
- * @param {String}   player      Player name
- * @param {int}      score       Player score
- * @param {Function} callback    Function to call with results
- */
-function addPlayer(player, score, callback) {
-
-    callback = callback.bind(null, player, score);
-    sendMessage('add-player', callback, { player: player });
-}
-
-/**
- * Adds a player row now that we have their handicap.
- *
- * @param {String}   player      Player name
- * @param {int}      score       Player score
- * @param {Object}   data        Result from db query
- */
-function handleHandicap(player, score, data) {
-
-    showScore(player, score, data && data.handicap);
-}
-
-/**
- * Adds a player row with just their score.
-
- * @param {String}   player      Player name
- * @param {int}      score       Player score
- * @param {int}      playerId    Player ID for newly added player
- */
-function handlePlayerAdd(player, score, playerId) {
-
-    window.personData[playerId] = { name: player };
-    window.personId[player] = playerId;
-    showScore(player, score);
-}
-
-/**
- * Adds a row to the table of player scores. If a handicap is provided, calculates and shows the
- * adjusted score.
- *
- * @param {String}   player      Player name
- * @param {int}      score       Player score
- * @param {int}      handicap    Player handicap (can be null if player lacks one)
- */
-function showScore(player, score, handicap) {
+    var id = window.personId[player],
+	p = window.personData[id],
+	handicap = window.handicaps[id],
+	adjScore = handicap != null ? Math.round((score - Number(handicap)) * 100) / 100 : score;
 
     var manualHandicap = $('#handicap').val();
     if (manualHandicap) {
 	handicap = Number(manualHandicap);
     }
-
-    var id = window.personId[player],
-	p = window.personData[id],
-	adjScore = handicap != null ? score - handicap : score;
 
     // update data
     p.handicap = handicap;
@@ -402,10 +365,15 @@ function updateTotal() {
 function addPlayerElement(id, player, score, handicap, adjScore) {
 
     var course = window.courseData[window.currentCourse],
-        index = getPlayerSortIndex(id),
 	score1 = (score == -1) ? 'DNF' : score,
-	adjScore1 = (score == -1) ? 'DNF' : adjScore,
+	adjScore1 = (score == -1) ? 'DNF' : adjScore.toFixed(2),
 	handicap1 = (score != -1 && handicap != null) ? handicap : ' ';
+
+    const el = $('li[data-playerid="' + id + '"]');
+    if (el) {
+	el.remove();
+    }
+    var index = getPlayerSortIndex(id);
 
     var ace = (course.ace > 0) ? "<div class='dataCell'><input type='text' class='ace' /></div>" : '',
         eagle = (course.eagle > 0) ? "<div class='dataCell'><input type='text' class='eagle' /></div>" : '';
@@ -413,7 +381,7 @@ function addPlayerElement(id, player, score, handicap, adjScore) {
     var handicapHtml = window.handicapping ? "<div class='dataCell playerHandicap'>" + handicap1 + "</div>" : '',
 	adjScoreHtml = window.handicapping ? "<div class='dataCell playerAdjScore'>" + adjScore1 + "</div>" : '';
     
-    var html = "<li data-playerid='" + id + "'><div class='playerName'>" + player + "</div><div class='dataCell playerScore'>" + score1 + "</div>" + handicapHtml + adjScoreHtml + "<div class='dataCell'><input type='text' class='prize' /></div><div class='dataCell'><input type='checkbox' class='paid' value='y' /></div>" + ace + eagle + "<div class='dataCell imgTrash' onclick='removeRow(event);'></div></li>";
+    var html = "<li data-playerid='" + id + "'><div class='playerName'>" + player + "</div><div class='dataCell playerScore'>" + score1 + "</div>" + handicapHtml + adjScoreHtml + "<div class='dataCell'><input type='text' class='prize' /></div><div class='dataCell'><input type='checkbox' class='paid' value='1' /></div>" + ace + eagle + "<div class='dataCell'><div class=' imgTrash' onclick='removeRow(event);'></div></div><div class='dataCell pay'></div></li>";
 
     // insert row at sort index - why doesn't jquery have insert at index?
     if (index === 0) {
@@ -425,6 +393,8 @@ function addPlayerElement(id, player, score, handicap, adjScore) {
     else {
 	$('#playerData').children().eq(index - 1).after(html);
     }
+
+    updatePayout();
 }
 
 /**
@@ -434,7 +404,8 @@ function addPlayerElement(id, player, score, handicap, adjScore) {
  */
 function removeRow(e) {
 
-    $(e.target).parent().remove();
+    $(e.target).closest('li').remove();
+    updatePayout();
 }
 
 /**
@@ -448,13 +419,14 @@ function removeRow(e) {
 function getPlayerSortIndex(id) {
 
     var index = -1;
+    var p1 = window.personData[id],
+	p1a = p1.score == -1 ? 5000 : parseFloat(p1.adjScore),
+	p1test = p1.handicap != null ? p1a : p1a + 1000;
+
     $('li[data-playerid]').each(function(idx, el) {
 	    var playerId = el.dataset.playerid,
-		p1 = window.personData[id],
-		p1a = p1.score == -1 ? 5000 : parseInt(p1.adjScore),
-		p1test = p1.handicap != null ? p1a : p1a + 1000,
 		p2 = window.personData[playerId],
-		p2a = p2.score == -1 ? 5000 : parseInt(p2.adjScore),
+		p2a = p2.score == -1 ? 5000 : parseFloat(p2.adjScore),
 		p2test = p2.handicap != null ? p2a : p2a + 1000;
 	    
 	    if (p1test < p2test) {
@@ -466,52 +438,226 @@ function getPlayerSortIndex(id) {
     return index;
 }
 
-/**
- * Sends the form with all the weekly info and round results to the server.
- *
- * @param {Event} e    Browser event
- */
-function submitResults(e) {
+// Update the payout any time a score is added or removed. The players are already sorted by
+// adjusted score.
+function updatePayout() {
 
-    e.preventDefault(); // we'll submit the form when we're ready
+    let numPlayers = 0;
+    let numPayablePlayers = 0;
+    const playerIds = [];
+    $('li[data-playerid]').each(function(idx, el) {
+	    let playerId = el.dataset.playerid;
+	    let player = window.personData[playerId];
+	    numPlayers++;
+	    playerIds.push(playerId);
+	    if (player.score > 0 && player.handicap != null) {
+		numPayablePlayers++;
+	    }
+	});
+
+    if (playerIds.length === 0) {
+	return;
+    }
+
+    const entry = parseFloat(window.courseData[window.currentCourse].prize);
+    const coefficient = 2;
+    // pay top third (at least one), and only players with handicaps
+    const paidPlaceCount = Math.max(Math.min(Math.round(numPlayers / 3), numPayablePlayers), 1);
+    const pool = entry * numPlayers;
+    const factor = 1 + (coefficient / paidPlaceCount);
+
+    const sharesByPlace = [];
+    let totalShares = 0;
+    for (let i = 0; i < paidPlaceCount; i++) {
+	const share = factor ** (paidPlaceCount - i);
+	sharesByPlace[i] = share;
+	totalShares += share;
+    }
+
+    const shareFraction = 1 / totalShares;
+    const shareValue = shareFraction * pool;
+    const payoutsByPlace = [];
+    let totalPayout = 0;
+
+    for (let i = 0; i < paidPlaceCount; i++) {
+	let payout = sharesByPlace[i] * shareValue;
+	payout = Math.round(payout * 100) / 100; // round to nearest cent
+	payoutsByPlace[i] = payout;
+	totalPayout += payout;
+    }
+
+    const roundingError = pool - totalPayout;
+    if (roundingError > 0) {
+	payoutsByPlace[0] += roundingError;
+    } else {
+	payoutsByPlace[payoutsByPlace.length - 1] += roundingError;
+    }
+
+    $('li[data-playerid] .prize').val(''); // clear payouts
+    $('li[data-playerid] .pay').html(''); // clear pay links/text
+    payoutsByPlace.forEach((payout, index) => {
+	    const prize = payout.toFixed(2);
+	    const playerId = playerIds[index];
+	    window.personData[playerId].prize = prize;
+	    window.personData[playerId].rank = index + 1;
+	    $('li[data-playerid] .prize:eq(' + index + ')').val(String(prize));
+	    const paypal = window.paypal[playerIds[index]];
+	    if (paypal) {
+		if (paypal.indexOf('@') !== -1) {
+		    $('li[data-playerid] .pay:eq(' + index + ')').text(paypal);
+		} else {
+		    const paymentLink = '<a target="_blank" onclick="handlePaymentClick(' + playerId + ')" href="' + 'https://www.paypal.me/' + paypal + '/' + prize + '">pay</a>';
+		    $('li[data-playerid] .pay:eq(' + index + ')').html(paymentLink);
+		}
+	    }
+	});
+}
+
+// Copies summary text in the format below to the clipboard
+//     Eugene Gershtein - Elks Club weekly on Jan 2, 2020: #1
+function handlePaymentClick(playerId) {
+    const player = window.personData[playerId];
+    const courseName = window.courseData[window.currentCourse].name;
+    const date = $('#date').val();
+    const note = player.name + ' - ' + courseName + ' weekly on ' + date + ': #' + player.rank;
+    navigator.clipboard.writeText(note); // note: requires use of https
+}
+
+async function submitResults(e) {
+
+    e.preventDefault();
 
     // Error checking
     var error = '';
     if (!$('#date').val()) {
-	error = "Date missing for weekly.";
-    }
-    if (error) {
-	alert("Error: " + error);
+	alert("Error: Date missing for weekly.");
 	return;
     }
 
-    // Encode the round results for the server to handle, and put the result in a hidden form field.
-    // Fields for a single round are separated by ":", and rounds are separated by "|".
-    var results = [];
+    const results = [];
+    const scores = [];
+    let result;
     $('#playerData li').each(function(idx, el) {
-	    var name = $(el).find('div.playerName').text(),
-		playerId = window.personId[name],
-		p = window.personData[playerId],
-		score = p.score,
-		handicap = p.handicap,
-		manualHandicap = p.manualHandicap ? 'y' : '',
-		adjScore = p.adjScore,
-		prize = $(el).find('input.prize').val(),
-		paidCheckbox = $(el).find('input.paid'),
-		paid = $(paidCheckbox).is(":checked") ? 'y' : '',
-		ace = $(el).find('input.ace').val(),
-		eagle = $(el).find('input.eagle').val();
+	    const name = $(el).find('div.playerName').text();
+	    const playerId = window.personId[name];
+	    const p = window.personData[playerId];
+	    const paidCheckbox = $(el).find('input.paid');
+	    result = {
+		player_id: playerId,
+		score: p.score,
+		player_handicap: p.handicap,
+		manual_handicap: p.manualHandicap ? '1' : '0',
+		adjusted_score: p.adjScore,
+		winnings: $(el).find('input.prize').val(),
+		paid: $(paidCheckbox).is(":checked") ? '1' : '0',
+		ace: $(el).find('input.ace').val(),
+		eagle: $(el).find('input.eagle').val(),
+	    };
+	    results.push(result);
+	    if (result.score !== -1) {
+		scores.push(result.score);
+	    }
+	});;
 
-	    results.push([playerId,score,handicap,adjScore,prize,paid,ace,eagle,manualHandicap].join(':'));
-	});
-    $('#playerResults').val(results.join('|'));
-    if (window.editMode) {
-	$('#weeklyId').val(window.qs.weeklyId);
+    const par = (scores.reduce((acc, score) => acc + score, 0) / scores.length).toFixed(2);
+    const coursePwd = window.courseData[window.currentCourse].password;
+    const weeklyData = {
+	courseId: window.qs.courseId || 1,
+	layout: $('#layout').val(),
+	date: toMysqlDate(new Date($('#date').val())),
+	notes: $('#notes').val(),
+	par,
+	coursePwd,
+	pwd: $('#password').val()
+    };
+
+    const weekly_id = window.weeklyData ? handleEdit(weeklyData, results) : sendResults(weeklyData, results);
+
+}
+
+async function sendResults(weeklyData, results) {
+
+    const weekly_id = await sendRequestAsync('add-weekly', weeklyData);
+    if (weekly_id == -1) {
+	alert("Error: Incorrect password");
+	return;
     }
 
-    // Go!
-    $('#form1').submit();
-}
+    results.forEach(result => {
+	    sendRequestAsync('add-round', { ...result, weekly_id });
+	});
+
+    $('#message').html('<span>Weekly ' + weekly_id + ' added, going to results page ...');
+    const test = window.qs.test ? '&test' : '';
+    setTimeout(() => window.location.href = 'http://conraddamon.com/dgw/weekly.html?id=' + weekly_id + test, 3000);
+
+    return weekly_id;
+};
+
+async function handleEdit(weeklyData, results) {
+
+    const weekly_id = window.weeklyData.id;
+    const weeklyUpdate = [];
+    const curWeeklyData = window.weeklyData;
+    [ 'layout', 'date', 'notes' ].forEach(field => {
+	    if ((weeklyData[field] || curWeeklyData[field]) && weeklyData[field] !== curWeeklyData[field]) {
+		weeklyUpdate.push(`${field}='${weeklyData[field]}'`);
+	    }
+	});
+    if (weeklyData.par !== curWeeklyData.par) {
+	weeklyUpdate.push(`par=${weeklyData.par}`);
+    }
+
+    if (weeklyUpdate.length > 0) {
+	const update = weeklyUpdate.join(',');
+	const dbResult = await sendRequestAsync('update-weekly', { update, weeklyId: weekly_id, coursePwd: weeklyData.coursePwd, pwd: weeklyData.pwd });
+	if (dbResult == -1) {
+	    alert("Error: Incorrect password");
+	    return;
+	}
+    }
+
+    results.forEach(async (result) => {
+	    const curResult = window.weeklyResults.find(weeklyResult => weeklyResult.player_id === result.player_id);
+	    if (curResult) {
+		const resultUpdate = [];
+		[ 'ace', 'eagle' ].forEach(field => {
+			if ((result[field] || curResult[field]) && (result[field] !== curResult[field])) {
+			    resultUpdate.push(`${field}='${result[field]}'`);
+			}
+		    });
+		[ 'adjusted_score', 'manual_handicap', 'paid', 'player_handicap', 'score', 'winnings' ].forEach(field => {
+			const curValue = Number(curResult[field] || 0);
+			const newValue = Number(result[field] || 0);
+			if (curValue !== newValue) {
+			    resultUpdate.push(`${field}=${newValue}`);
+			}
+		    });
+
+		if (resultUpdate.length > 0) {
+		    console.log('Update for ' + window.personData[result.player_id].name + ': ' + JSON.stringify(resultUpdate));
+		    const update = resultUpdate.join(',');
+		    await sendRequestAsync('update-round', { update, roundId: curResult.id });
+		}
+	    } else {
+		await sendRequestAsync('add-round', { ...result, weekly_id: weekly_id });
+	    }
+	});
+
+    window.weeklyResults.forEach(async (weeklyResult) => {
+	    const newResult = results.find(result => result.player_id === weeklyResult.player_id);
+	    if (!newResult) {
+		console.log('Delete round ' + result.id + ' for ' + window.personData[weeklyResult.player_id].name);
+		await sendRequestAsync('delete-round', { roundId: result.id });
+	    }
+	});
+
+    $('#message').html('<span>Weekly ' + weekly_id + ' edited, going to results page ...');
+    const test = window.qs.test ? '&test' : '';
+    setTimeout(() => window.location.href = 'http://conraddamon.com/dgw/weekly.html?id=' + weekly_id + test, 3000);
+
+    return weekly_id;
+};
 
 function gotWeekly(data) {
 

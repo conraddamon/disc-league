@@ -6,15 +6,20 @@
  * @param ev browser click event
  * @param field override of field to use
  */
-function sortTable(ev, field) {
+async function sortTable(ev, field, courseId, hcapMinRounds, hcapNumRounds, hcapRate) {
 
     field = field || ev.target.parentNode.id;
     // sort players by field
     var	players = sortPlayers(field),
 	table = document.getElementById('statsTable');
     
+    let handicapByPlayer = window.handicaps;
+    if (!handicapByPlayer) {
+	handicapByPlayer = window.handicaps = await calculateHandicaps(courseId, hcapMinRounds, hcapNumRounds, hcapRate);
+    }
+    const handicaps = { total: 0, num: 0 };
+
     var totalRounds = totalWinnings = totalUnpaid = 0;
-    var handicaps = { total: 0, num: 0 };
     var averages = {};
     var bests = {};
     window.courseLayouts.forEach(layout => {
@@ -22,20 +27,29 @@ function sortTable(ev, field) {
 	    bests[layout] = { total: 0, num: 0 };
 	});
 
+    // remove all but the first row
+    $('#statsTable').find("tr:gt(0)").remove();
 
     // re-layout table based on new sort order; table rows will be created if they don't exist (first time through)
+    let rowNum = 0;
     for (var i = 0; i < players.length; i++) {
 
 	var player = players[i],
 	    p = window.playerData[player],
-	    rounds = p.rounds || ' ',
-	    hcap = p.handicap == undefined ? ' ' : p.handicap,
+	    rounds = p.rounds,
+	    hcap = handicapByPlayer[p.id],
+	    hcapText = hcap != null ? hcap : '&nbsp;',
 	    avg = p.average,
 	    best = p.best,
 	    row = table.rows[i + 1] || table.insertRow(),
 	    html;
 
-	html = '<td>' + (i + 1) + '</td><td>' + player + '</td><td>' + rounds + '</td><td>' + hcap + '</td><td>' + formatMoney(p.winnings) + '</td><td>' + formatMoney(p.unpaid) + '</td>';
+	if (!rounds) {
+	    continue;
+	}
+
+	rowNum += 1;
+	html = '<td>' + rowNum + '</td><td>' + player + '</td><td>' + rounds + '</td><td>' + hcapText + '</td><td>' + formatMoney(p.winnings) + '</td><td>' + formatMoney(p.unpaid) + '</td>';
         window.courseLayouts.forEach(layout => {
 		html += '<td>' + (avg[layout] || ' ') + '</td>';
 		html += '<td>' + (best[layout] || ' ') + '</td>';
@@ -54,8 +68,8 @@ function sortTable(ev, field) {
 	totalWinnings += p.winnings;
 	totalUnpaid += p.unpaid;
 
-	if (p.handicap != null) {
-	    handicaps.total += p.handicap;
+	if (hcap) {
+	    handicaps.total += hcap;
 	    handicaps.num++;
 	}
     }
@@ -111,11 +125,11 @@ function by_name(a, b) {
 // Sorts by Handicap from low to high.
 function by_handicap(a, b) {
 
-    var hcapA = window.playerData[a].handicap,
-	hcapB = window.playerData[b].handicap;
+    var hcapA = parseFloat(window.handicaps[playerData[a].id]),
+	hcapB = parseFloat(window.handicaps[playerData[b].id]);
 
-    hcapA = hcapA == undefined ? 100 : hcapA;
-    hcapB = hcapB == undefined ? 100 : hcapB;
+    hcapA = isNaN(hcapA) ? 100 : hcapA;
+    hcapB = isNaN(hcapB) ? 100 : hcapB;
 
     return hcapA != hcapB ? hcapA - hcapB : by_name(a, b);
 }

@@ -12,6 +12,9 @@ require_once('db.php');
 require_once('log.php');
 require_once('util.php');
 
+$isTest = isset($_GET['test']);
+$test = $isTest ? "&test" : "";
+
 # fetch data about weekly
 $id = get_input('id', 'get');
 if (!$id) {
@@ -44,50 +47,11 @@ $multiLayouts = strpos($courseResult['layouts'], ',') !== false;
 # cobble together a title
 $date = date("M j, Y", strtotime($date));
 $title = "$course disc golf weekly on $date";
-$titleLink = "<a href='course.html?id=$courseId'>$course</a> disc golf weekly on $date";
+$titleLink = "<a href='course.html?id=$courseId$test'>$course</a> disc golf weekly on $date";
 if ($multiLayouts) {
   $layout = $weeklyResult['layout'];
   $titleLink = $titleLink . " ($layout course)";
 }
-
-# fetch the results
-$sql = "SELECT r.*,p.name FROM round r INNER JOIN player p ON r.player_id=p.id WHERE r.weekly_id=$id";
-$roundResult = db_query($sql);
-#show_me($roundResult);
-if (!$roundResult) {
-  echo "No rounds found for the weekly on " . $weeklyResult['date'] . ". That's odd.";
-  die();
-}
-
-# find the low scratch score
-$players = array();
-$low_score = 1000;
-foreach ($roundResult as $r) {
-  $pid = $r['player_id'];
-  $round[$pid] = $r;
-  array_push($players, $pid);
-  if ($r['score'] < $low_score && $r['score'] != -1) {
-    $low_scorers = array($r['name']);
-    $low_score = $r['score'];
-  }
-  else if ($r['score'] == $low_score) {
-    array_push($low_scorers, $r['name']);
-  }
-}
-$low_scorers = implode(", ", $low_scorers);
-
-# sort players (their IDs) by adjusted score
-usort($players, function($a, $b) use($round) {
-  $roundA = $round[$a];
-  $roundB = $round[$b];
-  $adjA = ($roundA['score'] == -1) ? 5000 : $roundA['adjusted_score'];
-  $adjB = ($roundB['score'] == -1) ? 5000 : $roundB['adjusted_score'];
-  $testA = isset($roundA['player_handicap']) ? $adjA : 1000 + $adjA;
-  $testB = isset($roundB['player_handicap']) ? $adjB : 1000 + $adjB;
-
-  return $testA - $testB;
-});
-#show_me($players, "Sorted");
 
 if ($notes) {
   $notes = "<p><strong>Note:</strong> $notes</p>\n";
@@ -96,68 +60,30 @@ if ($notes) {
 echo <<< EOF
 <html>
 <head>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+<script src="../js/common.js"></script>
+<script src="../js/dgw/common.js"></script>
+<script src="../js/dgw/weekly.js"></script>
 <title>$title</title>
 </head>
-<body>
+<body onload='sortTable(null, "place", $courseId, $id);'>
 <h1>$titleLink</h1>
-<p>The average score was $par. The low scratch score of the day was $low_score by $low_scorers.</p>
+<p>The average score was $par. The low scratch score of the day was <span id='low_score'></span> by <span id='low_scorers'></span>.</p>
 $notes
-<table cellspacing=15>
-<tr align=left><th>Place</th><th>Player</th><th>Raw Score</th><th>Handicap</th><th>Score</th><th>Prize</th></tr>
+<table name="results" id="resultsTable" cellspacing=15>
+  <tr align=left>
+    <th id='num'>#</th>
+    <th id='place'><a href='#results' onclick='sortTable(event)'>Place</a></th>
+    <th id='player'><a href='#results' onclick='sortTable(event)'>Player</a></th>
+    <th id='raw-score'><a href='#results' onclick='sortTable(event)'>Raw Score</a></th>
+    <th id='handicap'><a href='#results' onclick='sortTable(event)'>Handicap</a></th>
+    <th id='score'><a href='#results' onclick='sortTable(event)'>Score</a></th>
+    <th id='prize'><a href='#results' onclick='sortTable(event)'>Prize</a></th>
+  </tr>
+</table>
 EOF;
 
-# Display the results in a table
-
-$hasManualHandicap = false;
-$hasNoScore = false;
-$hasUnpaid = false;
-
-# we don't use foreach since we need $i for figuring out place
-$prevScore = null;
-for ($i = 0; $i < count($players); $i++) {
-  $pid = $players[$i];
-  $r = $round[$pid];
-  $dnf = false;
-  
-  $player = $r['name'];
-  $score = $r['score'];
-  if ($score == -1) {
-    $score = "NS";
-    $dnf = true;
-    $hasNoScore = true;
-  }
-  $hcap = !$dnf ? $r['player_handicap'] : ' ';
-  if ($hcap && $r['manual_handicap']) {
-    $hasManualHandicap = true;
-    $hcap = '(' . $hcap . ')';
-  }
-  $adjScore = !$dnf ? $r['adjusted_score'] : ' ';
-  $prize = $r['winnings'];
-  if ($prize == 0) {
-    $prize = ' ';
-  }
-  else {
-    $isUnpaid = $prize > 0 && !$r['paid'];
-    $prize = formatMoney($prize, ' ');
-    if ($isUnpaid) {
-      $prize .= '*';
-      $hasUnpaid = true;
-    }
-  }
-  $place = $i + 1;
-  if ($adjScore == $prevScore) {
-    $place = $curPlace;
-  }
-  $prevScore = $adjScore;
-  $curPlace = $place;
-
-  echo "<tr align=left><td>$place</td><td>$player</td><td>$score</td><td>$hcap</td><td>$adjScore</td><td>$prize</td></tr>\n";
-}
-
-echo "</table>";
-if ($hasNoScore) {
-  echo "<p>NS = Did not finish (DNF), or no score reported</p>";
-}
+echo "<p>NS = Did not finish (DNF), or no score reported</p>";
 if ($hasUnpaid) {
   echo <<< EOF
 <p>* Uncollected winnings. To collect, send payment information (PayPal, home address, etc) to 
@@ -168,7 +94,7 @@ if ($hasManualHandicap) {
   echo "<p>() means estimated handicap</p>";
 }
 echo <<< EOF
-<!-- <p><a href="admin/results.html?weeklyId=$id">Edit results</a> (requires password)</p> -->
+<p><a href="admin/results.html?weeklyId=$id$test">Edit results</a> (requires password)</p>
 </body>
 </html>
 EOF;

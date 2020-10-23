@@ -1,3 +1,37 @@
+.container {
+  display: flex;
+}
+
+.column {
+  padding: 10px;
+}
+
+.header {
+  text-align: center;
+  font-size: larger;
+}
+
+.list {
+  height: 320px;
+  overflow: auto;
+  border: 1px solid black;
+  padding: 10px;
+}
+
+.pot {
+  margin-bottom: 15px;
+}
+
+.layout {
+  text-align: center;
+  margin: 10px 0;
+  text-decoration: underline;
+}
+
+.result, .bonus, .record {
+  margin-top: 5px;
+}
+
 table, th, td {
   border: 1px solid black;
   border-collapse: collapse;

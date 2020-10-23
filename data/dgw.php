@@ -45,16 +45,17 @@ elseif ($op == 'load-player') {
   $result = db_query($sql);
 }
 
-elseif ($op == 'get-handicap') {
-  $pid = get_input('playerId', 'get');
-  $cid = get_input('courseId', 'get');
-  $sql = "SELECT handicap FROM handicap WHERE player_id=$pid AND course_id=$cid";
-  $result = db_query($sql, 'one');
-}
-
 elseif ($op == 'add-player') {
   $player = get_input('player', 'get');
   $sql = "INSERT INTO player (name) VALUES('$player')";
+  $result = db_query($sql);
+}
+
+elseif ($op == 'get-players') {
+  $cid = get_input('courseId', 'get');
+  $wid = get_input('weeklyId', 'get');
+  $sql = "SELECT DISTINCT p.id,p.name FROM player p, round r INNER JOIN weekly w ON r.weekly_id=$wid WHERE r.player_id=p.id AND w.course_id=$cid";
+  error_log($sql);
   $result = db_query($sql);
 }
 
@@ -77,6 +78,89 @@ elseif ($op == 'get-weekly') {
 elseif ($op == 'get-results') {
   $wid = get_input('weeklyId', 'get');
   $sql = "SELECT * FROM round WHERE weekly_id=$wid";
+  $result = db_query($sql);
+}
+
+elseif ($op == 'get-pars') {
+  $cid = get_input('courseId', 'get');
+  $sql = "SELECT id,par FROM weekly WHERE course_id=$cid";
+  $result = db_query($sql);
+}
+
+# TODO: limit to course (requires a join)
+elseif ($op == 'get-scores') {
+  $where = "score > 0";
+  $wid = get_input('weeklyId', 'get');
+  if ($wid) {
+    $where = $where . " AND weekly_id < $wid";
+  }
+  $sql = "SELECT weekly_id,player_id,score FROM `round` WHERE $where ORDER BY player_id,weekly_id DESC";
+  $result = db_query($sql);
+}
+
+elseif ($op == 'add-weekly') {
+  $pwd = get_input('pwd', 'get');
+  $coursePwd = get_input('coursePwd', 'get');
+  if (crypt($pwd, $pwd) != $coursePwd) {
+    $result = -1;
+  }
+  else {
+    $cid = get_input('courseId', 'get');
+    $layout = get_input('layout', 'get');
+    $date = get_input('date', 'get');
+    $par = get_input('par', 'get');
+    $notes = get_input('notes', 'get');
+    $notes = $notes ? "'$notes'" : 'NULL';
+    $sql = "INSERT into weekly (course_id,layout,date,par,notes) VALUES($cid,'$layout','$date',$par,$notes)";
+    error_log($sql);
+    $result = db_query($sql);
+  }
+}
+
+elseif ($op == 'add-round') {
+  $wid = get_input('weekly_id', 'get');
+  $pid = get_input('player_id', 'get');
+  $score = get_input('score', 'get');
+  $hcap = get_input('player_handicap', 'get');
+  $adjScore = get_input('adjusted_score', 'get');
+  $prize = get_input('winnings', 'get');
+  $paid = get_input('paid', 'get');
+  $ace = get_input('ace', 'get');
+  $eagle = get_input('eagle', 'get');
+  $manualHcap = get_input('manual_handicap', 'get');
+
+  $hcap = $hcap ? $hcap : 'NULL';
+  $prize = $prize !== '' ? $prize : 0;
+  $paid = $paid == '1' ? 'TRUE' : 'FALSE';
+  $ace = $ace !== '' ? "'$ace'" : 'NULL';
+  $eagle = $eagle !== '' ? "'$eagle'" : 'NULL';
+  $manualHcap = $manualHcap == '1' ? 'TRUE' : 'FALSE';
+
+  $sql = "INSERT into round (weekly_id,player_id,score,player_handicap,adjusted_score,winnings,paid,ace,eagle,manual_handicap) VALUES($wid,$pid,$score,$hcap,$adjScore,$prize,$paid,$ace,$eagle,$manualHcap)";
+  error_log($sql);
+  $result = db_query($sql);
+}
+
+elseif ($op == 'update-weekly') {
+  $pwd = get_input('pwd', 'get');
+  $coursePwd = get_input('coursePwd', 'get');
+  if (crypt($pwd, $pwd) != $coursePwd) {
+    $result = -1;
+  }
+  else {
+    $wid = get_input('weeklyId', 'get');
+    $update = get_input('update', 'get');
+    $sql = "UPDATE weekly SET $update WHERE id=$wid";
+    error_log($sql);
+    $result = db_query($sql);
+  }
+}
+
+elseif ($op == 'update-round') {
+  $rid = get_input('roundId', 'get');
+  $update = get_input('update', 'get');
+  $sql = "UPDATE round SET $update WHERE id=$rid";
+  error_log($sql);
   $result = db_query($sql);
 }
 

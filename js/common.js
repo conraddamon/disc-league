@@ -38,3 +38,38 @@ function passwordBlurHandler(e) {
 	    }
 	});
 }
+
+async function calculateHandicaps(courseId, hcapMinRounds, hcapNumRounds, hcapRate, weeklyId) {
+    
+    const parData = await sendRequestAsync('get-pars', { courseId });
+    const pars = {};
+    parData.forEach(parRow => {
+	    pars[parRow.id] = parRow.par;
+	});
+
+    const scores = await sendRequestAsync('get-scores', { weeklyId });
+    const scoresByPlayer = {};
+    scores.forEach(scoreRow => {
+	    scoresByPlayer[scoreRow.player_id] = scoresByPlayer[scoreRow.player_id] || [];
+	    const playerScores = scoresByPlayer[scoreRow.player_id];
+	    if (playerScores.length < hcapNumRounds) {
+		playerScores.push(scoreRow);
+	    }
+	});
+
+    const playerIds = Object.keys(scoresByPlayer);
+    const totalDelta = {};
+    playerIds.forEach(playerId => {
+	    totalDelta[playerId] = scoresByPlayer[playerId].reduce((acc, scoreRow) => acc + (scoreRow.score - pars[scoreRow.weekly_id]), 0);
+	});
+
+    const handicap = {};
+    playerIds.forEach(playerId => {
+	    const numScores = scoresByPlayer[playerId].length;
+	    if (numScores >= hcapMinRounds) {
+		handicap[playerId] = ((hcapRate / 100) * (totalDelta[playerId] / numScores)).toFixed(2);
+	    }
+	});
+
+    return handicap;
+}

@@ -56,8 +56,9 @@ function launch() {
   <div id="playerContainer">
     <ul>
       <li>Enter player names and scores below. Enter -1 if a player did not finish. Hit Return after typing the score to add to the results.</li>
+      <li>If you enter a score for a player who already has one, the new score will replace the old one.</li>
       <li class="ace">Enter the hole number(s) for any aces<span class="eagle"> or eagles</span>.</li>
-      <li>Once prize money has been determined, enter each player's winnings (if any). Hit Return to update the remaining payout.</li>
+      <li>Suggested prize money is calculated as scores are entered.</li>
       <li>To make a change, delete the round from the results and re-enter it.</li>
       <li>When everything looks right, click the "Post Results" button to submit the results.</li>
     </ul>
@@ -96,5 +97,7 @@ function launch() {
   <input type="hidden" name="results" id="playerResults" />
   <input type="hidden" name="weeklyId" id="weeklyId" />
 </form>
+
+<div style="color:red;" id="message"></div>
 </body>
 </html>
