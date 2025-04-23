@@ -20,7 +20,7 @@ require_once('util.php');
 $pw_master = 'wfuIyceA0.YCA';
 
 $op = get_input('op', 'get');
-elog(LOG_INFO, "dgw.php, op=$op");
+plog("dgw.php, op=$op");
 
 $option = null;
 if ($op == 'load-course') {
@@ -37,7 +37,7 @@ elseif ($op == 'get-num-weeklies') {
   $cid = get_input('courseId', 'get');
   $sql = "SELECT COUNT(*) FROM weekly WHERE course_id=$cid";
   $result = db_query($sql, 'count');
-  elog(LOG_INFO, "num weeklies: $result");
+  plog("num weeklies: $result");
 }
 
 elseif ($op == 'load-player') {
@@ -55,7 +55,6 @@ elseif ($op == 'get-players') {
   $cid = get_input('courseId', 'get');
   $wid = get_input('weeklyId', 'get');
   $sql = "SELECT DISTINCT p.id,p.name FROM player p, round r INNER JOIN weekly w ON r.weekly_id=$wid WHERE r.player_id=p.id AND w.course_id=$cid";
-  error_log($sql);
   $result = db_query($sql);
 }
 
@@ -66,7 +65,7 @@ elseif ($op == 'check-password') {
   $res = db_query($sql, 'one');
   $test = crypt($pw, $pw);
   $result = ($test == $res['password'] || $test == $pw_master) ? true : false;
-  elog(LOG_INFO, $pw . " / " . $test . " / " . $res['password']);
+  plog($pw . " / " . $test . " / " . $res['password']);
 }
 
 elseif ($op == 'get-weekly') {
@@ -83,18 +82,18 @@ elseif ($op == 'get-results') {
 
 elseif ($op == 'get-pars') {
   $cid = get_input('courseId', 'get');
-  $sql = "SELECT id,par FROM weekly WHERE course_id=$cid";
+  $sql = "SELECT id,par,layout,custom_par FROM weekly WHERE course_id=$cid";
   $result = db_query($sql);
 }
 
-# TODO: limit to course (requires a join)
 elseif ($op == 'get-scores') {
-  $where = "score > 0";
+  $cid = get_input('courseId', 'get');
+  $where = "w.course_id = $cid AND score > 0";
   $wid = get_input('weeklyId', 'get');
   if ($wid) {
     $where = $where . " AND weekly_id < $wid";
   }
-  $sql = "SELECT weekly_id,player_id,score FROM `round` WHERE $where ORDER BY player_id,weekly_id DESC";
+  $sql = "SELECT weekly_id,player_id,score FROM `round` r INNER JOIN weekly w ON r.weekly_id = w.id WHERE $where ORDER BY player_id,weekly_id DESC";
   $result = db_query($sql);
 }
 
@@ -111,8 +110,11 @@ elseif ($op == 'add-weekly') {
     $par = get_input('par', 'get');
     $notes = get_input('notes', 'get');
     $notes = $notes ? "'$notes'" : 'NULL';
-    $sql = "INSERT into weekly (course_id,layout,date,par,notes) VALUES($cid,'$layout','$date',$par,$notes)";
-    error_log($sql);
+    $customLayout = get_input('customLayout', 'get');
+    $customLayout = $customLayout ? "'$customLayout'" : 'NULL';
+    $customPar = get_input('customPar', 'get');
+    $customPar = $customPar ? "$customPar" : 'NULL';
+    $sql = "INSERT into weekly (course_id,layout,date,par,notes,custom_layout,custom_par) VALUES($cid,'$layout','$date',$par,$notes,$customLayout,$customPar)";
     $result = db_query($sql);
   }
 }
@@ -137,7 +139,12 @@ elseif ($op == 'add-round') {
   $manualHcap = $manualHcap == '1' ? 'TRUE' : 'FALSE';
 
   $sql = "INSERT into round (weekly_id,player_id,score,player_handicap,adjusted_score,winnings,paid,ace,eagle,manual_handicap) VALUES($wid,$pid,$score,$hcap,$adjScore,$prize,$paid,$ace,$eagle,$manualHcap)";
-  error_log($sql);
+  $result = db_query($sql);
+}
+
+elseif ($op == 'delete-round') {
+  $rid = get_input('roundId', 'get');
+  $sql = "DELETE FROM round WHERE id=$rid";
   $result = db_query($sql);
 }
 
@@ -151,7 +158,6 @@ elseif ($op == 'update-weekly') {
     $wid = get_input('weeklyId', 'get');
     $update = get_input('update', 'get');
     $sql = "UPDATE weekly SET $update WHERE id=$wid";
-    error_log($sql);
     $result = db_query($sql);
   }
 }
@@ -160,8 +166,54 @@ elseif ($op == 'update-round') {
   $rid = get_input('roundId', 'get');
   $update = get_input('update', 'get');
   $sql = "UPDATE round SET $update WHERE id=$rid";
-  error_log($sql);
   $result = db_query($sql);
+}
+
+elseif ($op == 'get-record') {
+  $cid = get_input('courseId', 'get');
+  $layout = get_input('layout', 'get');
+  $sql = "SELECT MIN(r.score) score FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$cid AND w.no_record=false AND r.score!=-1 AND w.layout='$layout'";
+  $result = db_query($sql);
+}
+
+elseif ($op == 'get-record-holders') {
+  $courseId = get_input('courseId', 'get');
+  $layout = get_input('layout', 'get');
+  $score = get_input('score', 'get');
+  $sql = "SELECT r.player_id, r.weekly_id, w.date FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.no_record=false AND w.layout='$layout' AND r.score=$score ORDER BY date DESC";
+  $result = db_query($sql);
+}
+
+elseif ($op == 'get-average-scores') {
+  $courseId = get_input('courseId', 'get');
+  $layout = get_input('layout', 'get');
+  $sql = "SELECT player_id, ROUND(AVG(score), 1) AS 'average' FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.layout='$layout' AND r.score > 0 AND NOT w.no_record GROUP BY player_id";
+  $result = db_query($sql);
+}
+
+elseif ($op == 'get-best-scores') {
+  $courseId = get_input('courseId', 'get');
+  $layout = get_input('layout', 'get');
+  $sql = "SELECT player_id, MIN(score) AS 'best' FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.layout='$layout' AND r.score > 0 AND NOT w.no_record GROUP BY
+player_id";
+  $result = db_query($sql);
+}
+
+elseif ($op == 'get-aces-eagles') {
+  $courseId = get_input('courseId', 'get');
+  $sql = "SELECT r.ace,r.eagle,r.weekly_id,r.player_id,w.date FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND (r.ace != '' OR r.eagle != '') ORDER BY w.id";
+  $result = db_query($sql);
+}
+
+elseif ($op == 'get-rounds') {
+  $courseId = get_input('courseId', 'get');
+  $startWeekly = get_input('startWeekly', 'get');
+  $endWeekly = get_input('endWeekly', 'get');
+  $sql = "SELECT COUNT(*) FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.id > $startWeekly";
+  if ($endWeekly) {
+      $sql .= " AND w.id <= $endWeekly";
+  }
+  $result = db_query($sql, 'count');
 }
 
 echo json_encode($result);

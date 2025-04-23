@@ -1,3 +1,7 @@
+<?php
+  require_once('util.php');
+  $extra = propagate_params(true);
+echo <<< EOF
 <html>
 <head>
 <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/themes/smoothness/jquery-ui.css">
@@ -62,8 +66,8 @@ input.invalid {
 <title class="title">Add a Course</title>
 </head>
 <body onload="launch()">
-<h2 class="title">Add a Course</h2>
-<form id="form1" method="post" action="course.php">
+  <h2 class="title">Add a Course</h2>
+  <form id="form1" method="post" action="course.php$extra">
   <div class="header">Course Information</div>
   <div class="description">Enter basic information about the course and its administrator. A course may have multiple layouts, and alternate weeklies among them.</div>
   <ul class="form">
@@ -93,6 +97,11 @@ input.invalid {
       <div><label for="layouts">Layouts:</label></div>
       <div><input ype="text" name="layouts" id="layouts" tabIndex=0 /></div>
       <div>If there are multiple layouts, separate them with a comma, eg "long,short".
+    </li>
+    <li>
+      <div><label for="layouts">Par for each layout:</label></div>
+      <div><input ype="text" name="pars" id="pars" tabIndex=0 /></div>
+      <div>If there are multiple layouts, separate their pars with a comma, eg "54,62".
     </li>
     <li>
       <div><label for="location">Location:</label></div>
@@ -164,7 +173,9 @@ input.invalid {
     </li>
 
   <button id="submitButton" type="submit" tabIndex=0>Add Course</button>
-  <input type="hidden" id="courseId" />
+  <input type="hidden" name="courseId" id="courseId" value="$courseId" />
 </form>
 </body>
 </html>
+EOF;
+?>

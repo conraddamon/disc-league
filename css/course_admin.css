@@ -8,6 +8,7 @@ button {
 
 .form > li > div:first-child  {
   padding-right: 1rem;
+  vertical-align: top;
 }
 
 .form > li > div:nth-child(2) {

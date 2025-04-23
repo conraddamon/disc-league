@@ -9,6 +9,7 @@ async function initializeResults() {
 
     // handle Enter key
     $(':text').on('keypress keydown keyup', keyHandler);
+    $('#bulkEntry').on('keypress keydown keyup', keyHandler);
     $('#playerData').on('keypress keydown keyup', keyHandler);
 
     // hide results header to start
@@ -26,6 +27,9 @@ async function initializeResults() {
     $('#password').blur(passwordBlurHandler);
 
     $('#manualHandicaps').change(handleManualHandicaps);
+    $('#enableBulkEntry').change(handleEnableBulkEntry);
+    $('#layout').change(handleLayoutChange);
+    $('#customLayout').on('paste', handleLayoutPaste);
 
     // we handle form submit
     $('#submitButton').click(submitResults);
@@ -35,18 +39,16 @@ async function initializeResults() {
 
     // remember query string args
     window.qs = parseQueryString();
+    window.currentCourse = window.qs.id || window.qs.courseId;
+
+//    window.parData = await sendRequestAsync('get-pars', { courseId: window.currentCourse });
+//    window.scores = await sendRequestAsync('get-scores', { weeklyId: window.qs.weeklyId, courseId: window.currentCourse });
 
     // fetch data
     const courseData = await sendRequestAsync('load-course');
     handleCourseInfo(courseData);
     const playerData = await sendRequestAsync('load-player');
     handlePlayerInfo(playerData);
-
-    const weeklyToEdit = window.qs.weeklyId;
-    if (weeklyToEdit) {
-	window.weeklyData = await sendRequestAsync('get-weekly', { weeklyId: weeklyToEdit });
-	window.weeklyResults = await sendRequestAsync('get-results', { weeklyId: weeklyToEdit });
-    }
 }
 
 /**
@@ -78,6 +80,9 @@ function keyHandler(e) {
 	    else if (e.target.id === 'player') {
 		$('#score').focus();
 	    }
+	    else if (e.target.id === 'bulkEntry') {
+		processBulkEntry();
+	    }
 	    else if ($(e.target).hasClass('prize')) {
 		updateTotal();
 		$(e.target).parent().parent().next().find('.prize').focus();
@@ -99,6 +104,58 @@ function handleManualHandicaps(e) {
     }
 }
 
+function handleEnableBulkEntry(e) {
+
+    var on = !!$("input[name='enableBulkEntry']:checked").val();
+    if (on) {
+	$('#bulkEntryContainer').show();
+    }
+    else {
+	$('#bulkEntryContainer').hide();
+    }
+}
+
+function handleLayoutChange(e) {
+    const layout = e.target.value;
+    if (layout === 'custom') {
+	$('#customLayoutContainer').show();
+    } else {
+	$('#customLayoutContainer').hide();
+    }
+}
+
+function parseUdiscLayout(text) {
+
+    text = text.replace(/['"]/g, '');
+    const lines = text.split('\n').filter(line => /\S+/.test(line));
+    let layout = lines[0];
+    let layoutPar = 0;
+    if (lines.length > 1) {
+	const holes = [];
+	lines.forEach(line => {
+	    const parts = line.split('\t');
+	    const hole = parts[0];
+	    const star = /^\d+$/.test(hole) ? '' : '*';
+	    const par = Number(parts[1]);
+	    layoutPar += par;
+	    const tee = parts[2][0];
+	    const pin = parts[3];
+	    const holePar = (par === 3) ? '' : par;
+	    holes.push(tee + pin + holePar + star);
+	});
+	layout = holes.join(',');
+    } else {
+	layoutPar = layout.split(',').reduce((acc, hole) => acc + (parseInt(hole.slice(-1)) || 3), 0);
+    }
+
+    $('#customLayout').val(layout);
+    $('#customPar').val(layoutPar);
+}
+
+function handleLayoutPaste(e) {
+    setTimeout(() => parseUdiscLayout($('#customLayout').val()));
+}
+
 /**
  * Stores course data in a global window variable.
  *
@@ -109,7 +166,7 @@ async function handleCourseInfo(data) {
     // Change current course when user picks a different course
     $('#course').on('change', onCourseSelected);
 
-    var courseToSelect = window.qs.courseId || 1,
+    var courseToSelect = window.qs.courseId || window.qs.id || 1,
 	isTest = window.qs.test,
 	cd = window.courseData = {}; // global storage for course data
 
@@ -143,9 +200,6 @@ async function handlePlayerInfo(data) {
 
     if (window.qs.weeklyId) {
 	window.editMode = true;
-	// sendRequest('get-weekly',  { weeklyId: window.qs.weeklyId }, gotWeekly).then(function() {
-	//	sendRequest('get-results', { weeklyId: window.qs.weeklyId }, gotResults);
-	//    });
 	const weeklyData = await sendRequestAsync('get-weekly',  { weeklyId: window.qs.weeklyId });
 	gotWeekly(weeklyData);
 	const resultData = await sendRequestAsync('get-results', { weeklyId: window.qs.weeklyId });
@@ -168,6 +222,8 @@ async function onCourseSelected(e, value) {
 	course = window.courseData[value];
 
     window.currentCourse = course.id;
+    
+    var defaultLayout = course.id === '1' ? 'custom' : undefined;
 
     updateTitle();
 
@@ -178,13 +234,19 @@ async function onCourseSelected(e, value) {
     // create a select if there are multiple layouts
     if (layouts && layouts.length > 1) {
 	for (var j = 0; j < layouts.length; j++) {
-	    var layout = layouts[j],
-		option = new Option(layout, layout);
+	    var layout = layouts[j];
+    	    var isDefault = (layout === defaultLayout);
+	    var option = new Option(layout, layout, isDefault, isDefault);
 	    $('#layout').append($(option));
 	}
 	showLayouts = true;
     }
     $('#layoutContainer').css('display', showLayouts ? 'inline-block' : 'none');
+    if (defaultLayout === 'custom') {
+	$('#customLayoutContainer').show();
+    } else {
+	$('#customLayoutContainer').hide();
+    }
 
     // show entry and prize info
     var moneyText = [], money = [];
@@ -220,25 +282,28 @@ async function onCourseSelected(e, value) {
 	$('#courseMoney').text(moneyText.join(' / ') + " money per entry: " + money.join(' / '));
     }
 
+    const parMap = {};
+    const pars = course.pars.split(/\s*,\s*/);
+    course.layouts.split(/\s*,\s*/).forEach((layout, index) => parMap[layout] = Number(pars[index]));
+
     // get handicaps
-    window.handicaps = await calculateHandicaps(course.id, course.handicap_min_rounds, course.handicap_num_rounds, course.handicap_rate, window.qs.weeklyId);
+    window.handicaps = await calculateHandicaps(course.id, course.handicap_min_rounds, course.handicap_num_rounds, course.handicap_rate, course.handicap_base, parMap, window.qs.weeklyId);
 
     // find out how many weeklies this course has had (to know whether handicapping is in effect)
     if (course.numWeeklies == null) {
-	getNumWeeklies(course.id, handleNumWeeklies);
+	getNumWeeklies(handleNumWeeklies);
     }
 }
 
 /**
  * Fetches the number of weeklies held at the given course
  *
- * @param {int}      courseId    Course ID
  * @param {Function} callback    Function to call with results
  */
-async function getNumWeeklies(courseId, callback) {
+async function getNumWeeklies( callback) {
 
-    callback = callback.bind(null, courseId);
-    const data = await sendRequestAsync('get-num-weeklies', { courseId: courseId });
+    callback = callback.bind(null, window.currentCourse);
+    const data = await sendRequestAsync('get-num-weeklies', { courseId: window.currentCourse });
     callback(data);
 }
 
@@ -270,24 +335,22 @@ async function handleNumWeeklies(courseId, numWeeklies) {
 /**
  * Starts the process of adding a player data row to the table. If the player is new, add them.
  */
-async function addScore() {
+async function addScore(player, score) {
 
-    var player = $('#player').val(),
-	score = $('#score').val();
+    player = capitalizeName(player || $('#player').val());
+    score = score || $('#score').val();
 
     if (!$.isNumeric(score)) {
 	return;
     }
 
     if (!window.personId[player]) {
-	const playerId = await sendRequestAsync('add-player', { player: player });
+	const playerId = await sendRequestAsync('add-player', { player });
 	window.personData[playerId] = { name: player };
 	window.personId[player] = playerId;
-	showScore(player, score, playerId);
     }
-    else {
-	showScore(player, score);
-    }
+
+    showScore(player, score);
 }
 
 /**
@@ -295,21 +358,23 @@ async function addScore() {
  *
  * @param {string}   player      Player name
  * @param {string}   score       Player score
+ * @param {string}   handicap    Player handicap
  */
-function showScore(player, score) {
+function showScore(player, score, handicap) {
 
     score = Number(score);
 
-    var id = window.personId[player],
-	p = window.personData[id],
-	handicap = window.handicaps[id],
-	adjScore = handicap != null ? Math.round((score - Number(handicap)) * 100) / 100 : score;
+    const id = window.personId[player];
+    const p = window.personData[id];
+    handicap = handicap || (window.handicaps ? window.handicaps[id] : undefined);
 
     var manualHandicap = $('#handicap').val();
     if (manualHandicap) {
 	handicap = Number(manualHandicap);
     }
 
+    const adjScore = handicap != null && !isNaN(handicap) ? Math.round((score - Number(handicap)) * 100) / 100 : score;
+    
     // update data
     p.handicap = handicap;
     p.manualHandicap = !!manualHandicap;
@@ -462,6 +527,9 @@ function updatePayout() {
     const entry = parseFloat(window.courseData[window.currentCourse].prize);
     const coefficient = 2;
     // pay top third (at least one), and only players with handicaps
+    if (numPayablePlayers === 0) {
+	numPayablePlayers = numPlayers;
+    }
     const paidPlaceCount = Math.max(Math.min(Math.round(numPlayers / 3), numPayablePlayers), 1);
     const pool = entry * numPlayers;
     const factor = 1 + (coefficient / paidPlaceCount);
@@ -513,6 +581,20 @@ function updatePayout() {
 	});
 }
 
+// Handle bulk entry. Just take each line, find player and score, and handle as if entered the usual way.
+function processBulkEntry() {
+
+    const content = $('#bulkEntry').val();
+    const lines = content.split('\n') || [];
+    lines.forEach(line => {
+	    let [ player, score ] = line.split(/\t|\s*,\s*/);
+	    score = !(score > 0) ? -1 : score;
+	    if (player && score) {
+		addScore(player, score);
+	    }
+	});
+}
+
 // Copies summary text in the format below to the clipboard
 //     Eugene Gershtein - Elks Club weekly on Jan 2, 2020: #1
 function handlePaymentClick(playerId) {
@@ -545,7 +627,7 @@ async function submitResults(e) {
 	    result = {
 		player_id: playerId,
 		score: p.score,
-		player_handicap: p.handicap,
+		player_handicap: isNaN(p.handicap) ? 'NULL' : p.handicap,
 		manual_handicap: p.manualHandicap ? '1' : '0',
 		adjusted_score: p.adjScore,
 		winnings: $(el).find('input.prize').val(),
@@ -562,17 +644,18 @@ async function submitResults(e) {
     const par = (scores.reduce((acc, score) => acc + score, 0) / scores.length).toFixed(2);
     const coursePwd = window.courseData[window.currentCourse].password;
     const weeklyData = {
-	courseId: window.qs.courseId || 1,
+	courseId: $('#course').val(),
 	layout: $('#layout').val(),
 	date: toMysqlDate(new Date($('#date').val())),
 	notes: $('#notes').val(),
 	par,
 	coursePwd,
-	pwd: $('#password').val()
+	pwd: $('#password').val(),
+	customLayout: $('#customLayout').val(),
+	customPar: $('#customPar').val(),
     };
 
-    const weekly_id = window.weeklyData ? handleEdit(weeklyData, results) : sendResults(weeklyData, results);
-
+    const weekly_id = window.editMode ? handleEdit(weeklyData, results) : sendResults(weeklyData, results);
 }
 
 async function sendResults(weeklyData, results) {
@@ -635,7 +718,7 @@ async function handleEdit(weeklyData, results) {
 		    });
 
 		if (resultUpdate.length > 0) {
-		    console.log('Update for ' + window.personData[result.player_id].name + ': ' + JSON.stringify(resultUpdate));
+		    // console.log('Update for ' + window.personData[result.player_id].name + ': ' + JSON.stringify(resultUpdate));
 		    const update = resultUpdate.join(',');
 		    await sendRequestAsync('update-round', { update, roundId: curResult.id });
 		}
@@ -647,8 +730,8 @@ async function handleEdit(weeklyData, results) {
     window.weeklyResults.forEach(async (weeklyResult) => {
 	    const newResult = results.find(result => result.player_id === weeklyResult.player_id);
 	    if (!newResult) {
-		console.log('Delete round ' + result.id + ' for ' + window.personData[weeklyResult.player_id].name);
-		await sendRequestAsync('delete-round', { roundId: result.id });
+		// console.log('Delete round ' + weeklyResult.id + ' for ' + window.personData[weeklyResult.player_id].name);
+		await sendRequestAsync('delete-round', { roundId: weeklyResult.id });
 	    }
 	});
 
@@ -661,6 +744,8 @@ async function handleEdit(weeklyData, results) {
 
 function gotWeekly(data) {
 
+    window.weeklyData = data;
+
     $('#course option[value="' + data.course_id + '"]').prop('selected', true);
     $('#layout option[value="' + data.layout + '"]').prop('selected', true);
 
@@ -671,6 +756,8 @@ function gotWeekly(data) {
 }
 
 function gotResults(data) {
+
+    window.weeklyResults = data;
 
     data = data || [];
     data.forEach(function(round) {

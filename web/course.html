@@ -11,8 +11,7 @@ require_once('db.php');
 require_once('log.php');
 require_once('util.php');
 
-$isTest = isset($_GET['test']);
-$test = $isTest ? "&test" : "";
+$extra = propagate_params();
 
 $potCap['ace'] = 500;
 $potCap['eagle'] = 150;
@@ -26,7 +25,21 @@ $hcapMinRounds = $courseResult['handicap_min_rounds'];
 $hcapStart = $courseResult['handicap_start'];
 $hcapRate = $courseResult['handicap_rate'];
 $hcapNumRounds = $courseResult['handicap_num_rounds'];
+$hcapBase = $courseResult['handicap_base'];
 $courseLayouts = $courseResult['layouts'];
+$coursePars = $courseResult['pars'];
+$aceAmount = $courseResult['ace'];
+$eagleAmount = $courseResult['eagle'];
+$initialAcePot = $courseResult['initial_ace'];
+$initialEaglePot = $courseResult['initial_eagle'];
+
+$layouts = explode(',', $courseLayouts);
+$pars = explode(',', $coursePars);
+$parMap = '{';
+for ($i = 0; $i < count($layouts); $i++) {
+  $parMap .= $layouts[$i] . ': ' . $pars[$i] . ',';	  
+}
+$parMap .= '}';
 
 # fetch all the weeklies that have happened at the course
 $sql = "SELECT * FROM weekly WHERE course_id=$courseId ORDER BY date";
@@ -59,24 +72,18 @@ foreach ($result as $p) {
   $player[$p['id']] = $p['name'];
 }
 
-$sql = "SELECT id,par FROM weekly WHERE course_id=$cid";
-$result = db_query($sql);
-foreach ($result as $r) {
-  $pars[$r['id']] = $r['par'];
-}
-
-$sql = "SELECT weekly_id,player_id,score FROM `round` WHERE score > 0 ORDER BY player_id,weekly_id DESC";
-$result = db_query($sql);
-$scores = array();
-foreach ($result as $r) {
-#  array_push($scores[$r['player_id'], $r['score']);
-}
-
-
-$sql = "SELECT r.player_id, COUNT(r.id) AS rounds FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=1 && score != -1 GROUP BY player_id";
+# get number of rounds played by each player
+$sql = "SELECT r.player_id, COUNT(r.id) AS rounds FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId && score != -1 GROUP BY player_id";
 $result = db_query($sql);
 foreach ($result as $r) {
   $rounds[$r['player_id']] = $r['rounds'];
+}
+
+# get number of times each player has shot the low round for a weekly
+$sql = "SELECT round.*, COUNT(*) AS num FROM round INNER JOIN (SELECT weekly_id, MIN(score) AS low FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE score > 0  AND w.course_id=$courseId GROUP BY weekly_id) t ON round.weekly_id = t.weekly_id AND round.score = t.low GROUP BY player_id";
+$result = db_query($sql);
+foreach ($result as $r) {
+  $low[$r['player_id']] = $r['num'];
 }
 
 # get total winnings for each player
@@ -99,84 +106,58 @@ $resultText = '';
 foreach ($weeklies as $w) {
   $weeklyId = $w['id'];
   $date = formatDate($w['date']);
-  $resultText .= "<div class='result'><a href='weekly.html?id=$weeklyId$test'>$date</a></div>\n";
+  $resultText .= "<div class='result'><a href='weekly.html?id=$weeklyId$extra'>$date</a></div>\n";
 }
 
 if ($courseNote) {
   $courseNote = "<p>$courseNote</p>\n";
 }
 
+if ($hcapBase == 'average') {
+  $hcapBaseText = '(the average score that week)';
+}
+
 # tell folks if handicapping is not yet in play
 $startText = '';
 if (count($weeklyResult) < $hcapStart) {
-  $suffix = $hcapStart == 1 ? "st" : $hcapStart == 2 ? "nd" : "th";
+  $suffix = $hcapStart == 1 ? "st" : $hcapStart == 2 ? "nd" : $hcapStart == 3 ? "rd" : "th";
   $start = "$hcapStart$suffix weekly";
   $startText = "Handicaps will start being used with the $hcapStart$suffix weekly. ";
 }
 
-# figure out course record in each layout
-$recordText = '';
-$headerText = '';
-$layouts = preg_split("/,\s*/", $courseLayouts);
+$layoutSelect = "<select onchange='handleLayoutChange($courseId, event.target.value)'>";
 foreach ($layouts as $layout) {
-  $sql = "SELECT MIN(r.score) score FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.no_record=false AND r.score!=-1 AND w.layout='$layout'";
-  $result = db_query($sql, 'one');
-  if (!$result) {
-    continue;
+  if ($layout !== 'custom') {
+    $layoutSelect .= "<option value='$layout'>$layout</option>";
   }
-  $score = $result['score'];
-  if ($score > 0) {
-    $sql = "SELECT r.player_id, r.weekly_id, w.date FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.no_record=false AND w.layout='$layout' AND r.score=$score ORDER BY date DESC";
-    $result = db_query($sql);
-    if (count($layouts) > 1) {
-      $recordText .= "<div class='layout'>". ucfirst($layout) . "</div>";
-    }
-    foreach ($result as $r) {
-      $p = $player[$r['player_id']];
-      $recordText .= "<div class='record'>$score by $p on <a href='weekly.html?id=" . $r['weekly_id'] . "$test'>" . date("M j, Y", strtotime($r['date'])) . "</a></div>";
-    }
-  }
-
-  $sql = "SELECT player_id, ROUND(AVG(score), 1) AS 'average' FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.layout='$layout' AND r.score > 0 AND NOT w.no_record GROUP BY player_id";
-  $result = db_query($sql);
-  foreach ($result as $r) {
-    $average[$r['player_id']][$layout] = $r['average'];
-  }
-
-  $sql = "SELECT player_id, MIN(score) AS 'best' FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND w.layout='$layout' AND r.score > 0 AND NOT w.no_record GROUP BY player_id";
-  $result = db_query($sql);
-  foreach ($result as $r) {
-    $best[$r['player_id']][$layout] = $r['best'];
-  }
-
-  $headerText .= "<th id='average-$layout'><a href='#stats' onclick='sortTable(event)'>Average ($layout)</a></th>";
-  $headerText .= "<th id='best-$layout'><a href='#stats' onclick='sortTable(event)'>Best ($layout)</a></th>";
 }
+$layoutSelect .= "</select>";
 
+$headerText = '';
+$headerText .= "<th id='average'><a href='#stats' onclick='sortTable(event)'>Average</a></th>";
+$headerText .= "<th id='best'><a href='#stats' onclick='sortTable(event)'>Best</a></th>";
+
+$bonusPot = array();
 $bonusInfo = get_bonus_pots($courseId);
-$acePot = $bonusInfo['ace']['pot'];
-$eaglePot = $bonusInfo['eagle']['pot'];
+$acePot = $bonusPot['ace'];
+$eaglePot = $bonusPot['eagle'];
 $bonusText = array();
 $types = array('ace', 'eagle');
 foreach ($types as $type) {
   $bonusText[$type] = '';
-  foreach (array_reverse(array_keys($bonusInfo[$type])) as $weeklyId) {
-    if ($weeklyId == 'pot') {
-      continue;
-    }
+  foreach (array_reverse($bonusInfo[$type]) as $hit) {			   
     $bonusText[$type] .= "<div class='bonus'>";
-    $bonusText[$type] .= $bonusInfo[$type][$weeklyId]['hole'] . " by ";
-    $bonusText[$type] .= $bonusInfo[$type][$weeklyId]['player'] . " for ";
-    $bonusText[$type] .= $bonusInfo[$type][$weeklyId]['prize'] . " on ";
-    $bonusText[$type] .= "<a href='weekly.html?id=" . $weeklyId . "$test'>" . $bonusInfo[$type][$weeklyId]['date'] . "</a>";
+    $bonusText[$type] .= $hit['hole'] . " by ";
+    $bonusText[$type] .= $hit['player'] . " for ";
+    $bonusText[$type] .= $hit['prize'] . " on ";
+    $bonusText[$type] .= "<a href='weekly.html?id=" . $hit['weekly'] . "$test'>" . $hit['date'] . "</a>";
     $bonusText[$type] .= "</div>";
   }
 }
 $aceText = $bonusText['ace'];
 $eagleText = $bonusText['eagle'];
 
-
-$statsText = "<p>There have been $paidRounds total weekly rounds ($numRounds with scores reported) so far by $numPlayers different players.</p>\n";
+$statsText = "<p>Total weekly rounds: $paidRounds. Players:  $numPlayers.</p>\n";
 
 echo <<< EOF
 <html>
@@ -188,10 +169,11 @@ echo <<< EOF
 <script src="../js/dgw/course.js"></script>
 <title>$title</title>
 </head>
-<body onload='sortTable(null, "name", $courseId, $hcapMinRounds, $hcapNumRounds, $hcapRate);'>
+<body onload='handleLayoutChange($courseId, "$layouts[0]");'>
 <h1>$title</h1>
 $courseNote
 $statsText
+
 <h2>Results</h2>
 <div class='container'>
   <div class='column'>
@@ -202,29 +184,36 @@ $statsText
   </div>
   <div class='column'>
     <div class='header'>Aces</div>
-    <div class='list'>
-      <div class='pot'>Pot: $acePot</div>
+    <div class='list' id='aceSection'>
+      <div class='pot'>Ace pot: $acePot</div>
       $aceText
     </div>
   </div>
+EOF;
+if ($eagleAmount > 0) {  
+echo <<< EOF
   <div class='column'>
     <div class='header'>Eagles</div>
-    <div class='list'>
-      <div class='pot'>Pot: $eaglePot</div>
+    <div class='list' id='eagleSection'>
+      <div class='pot'>Eagle pot: $eaglePot</div>
       $eagleText
     </div>
   </div>
-  <div class='column'>
-    <div class='header'>Course Records</div>
-    <div class='list'>
-      $recordText
-    </div>
-  </div>
+EOF;
+}
+echo <<< EOF
 </div>
-
 <h2>Handicaps</h2>
-<p>$startText Your handicap is $hcapRate% of the average number of strokes between you and par (the average score that week) for your $hcapNumRounds most recent rounds. It takes $hcapMinRounds rounds to establish a handicap.</p>
+<p>$startText Your handicap is $hcapRate% of the average number of strokes between you and par $hcapBaseText for your $hcapNumRounds most recent rounds. It takes $hcapMinRounds rounds to establish a handicap. Your handicap is the same for all layouts.</p>
 <!-- <p><a href="admin/course.html?id=$courseId">Edit Course</a> (requires password)</p> -->
+
+<h2>Statistics</h2>
+
+Show stats for the following layout: $layoutSelect
+
+<h2>Layout: <span id="currentLayout">Main</span></h2>
+
+<p>Course Record:<span id="layoutRecord"></span></p>
 
 <h2>Players</h2>
 <table name='stats' id='statsTable'>
@@ -232,18 +221,21 @@ $statsText
   <th id='num'>#</a></th>
   <th id='name'><a href='#stats' onclick='sortTable(event)'>Name</a></th>
   <th id='rounds'><a href='#stats' onclick='sortTable(event)'>Rounds</a></th>
+  <th id='low'><a href='#stats' onclick='sortTable(event)'>Low</a></th>
   <th id='handicap'><a href='#stats' onclick='sortTable(event)'>Handicap</a></th>
   <th id='winnings'><a href='#stats' onclick='sortTable(event)'>Winnings</a></th>
   <th id='unpaid'><a href='#stats' onclick='sortTable(event)'>Unpaid</a></th>
   $headerText
 </tr>
 </table>
-EOF;
-
-
-echo <<< EOF
 </body>
 <script>
+   window.courseData = {
+EOF;
+echo "id:" . $courseId . ",handicap_min_rounds:" . $hcapMinRounds . ",handicap_num_rounds:" . $hcapNumRounds . ",handicap_rate:" . $hcapRate . ",handicap_base:'" . $hcapBase . "', parMap:" . $parMap . ", ace:" . $aceAmount . ", eagle:" . $eagleAmount . ", initial_ace:" . $initialAcePot . ", initial_eagle:" . $initialEaglePot ;
+
+echo <<< EOF
+};
    window.playerData = {
 EOF;
 
@@ -274,31 +266,14 @@ EOF;
 #     {'Fred Flintstone':{'rounds':3,winnings:23.50,unpaid:0},average:{main:65,alternate:67},best:{main:55,alternate:57}}
 function player_data($pid) {
 
-  global $player, $rounds, $winnings, $unpaid, $last, $layouts, $average, $best;
+  global $player, $rounds, $low, $winnings, $unpaid, $last, $layouts, $average, $best;
 
   $r = isset($rounds[$pid]) ? $rounds[$pid] : 0;
+  $l = isset($low[$pid]) ? $low[$pid] : 0;
   $w = isset($winnings[$pid]) ? $winnings[$pid] : 0;
   $u = isset($unpaid[$pid]) ? $unpaid[$pid] : 0;
 
-  $out = quote($player[$pid]) . ':{' . "'id':" . $pid .",'rounds':" . $r . ",'winnings':" . $w . ",'unpaid':" . $u;
-
-  $out .= ",'average':{";
-  foreach ($layouts as $layout) {
-    $avg = isset($average[$pid][$layout]) ? $average[$pid][$layout] : -1;
-    if ($avg > 0) {
-      $out .= "'$layout':$avg,";
-    }
-  }
-  $out .= "}";
-
-  $out .= ",'best':{";
-  foreach ($layouts as $layout) {
-    $b = isset($best[$pid][$layout]) ? $best[$pid][$layout] : -1;
-    if ($b > 0) {
-      $out .= "'$layout':$b,";
-    }
-  }
-  $out .= "}";
+  $out = $pid . ':{' . "'player':" . quote($player[$pid]) . ",'low':" . $l . ",'rounds':" . $r . ",'winnings':" . $w . ",'unpaid':" . $u;
 
   $out .= "}";
   if ($pid != $last) {
@@ -313,16 +288,13 @@ function player_data($pid) {
 # summarizes each time one of them was hit.
 function get_bonus_pots($courseId) {
 
-  global $courseResult, $player, $potCap;
+  global $courseResult, $player, $potCap, $bonusPot;
 
   $bonusInfo = array();
 
   // get all the aces and eagles for this course
   $sql = "SELECT r.ace,r.eagle,r.weekly_id,r.player_id,w.date FROM round r INNER JOIN weekly w ON r.weekly_id=w.id WHERE w.course_id=$courseId AND (r.ace != '' OR r.eagle != '') ORDER BY w.id";
   $result = db_query($sql);
-  if (!$result) {
-    return '';
-  }
 
   $types = array('ace', 'eagle');
   foreach ($types as $type) {
@@ -331,15 +303,31 @@ function get_bonus_pots($courseId) {
     $start = 0;
     $forward = 0;
     $bonusInfo[$type] = array();
+    $hitsByWeekly = array();
+
     foreach ($result as $r) {
       if (!$r[$type]) {
 	continue;
       }
+      $weekly = $r['weekly_id'];
+      if (!$hitsByWeekly[$weekly]) {
+        $hitsByWeekly[$weekly] = array();
+      }
+      $holes = preg_split("/[\s,]+/", $r[$type]);
+      foreach ($holes as $hole) {
+        $hit = $r;
+        $hit['hole'] = $hole;
+        array_push($hitsByWeekly[$weekly], $hit);
+      }
+    }
+
+    foreach ($hitsByWeekly as $weekly => $hits) {
       $cap = 10000;
-      $end = $r['weekly_id'];
+      $end = $weekly;
       if ($type == 'ace' || $end > 200) {
         $cap = $potCap[$type];
       }
+
       if ($start == 0 && $initialPot > 0) {
 	$prize = $initialPot;
       }
@@ -356,14 +344,17 @@ function get_bonus_pots($courseId) {
           $forward = 0;
         }
       }
+
       $start = $end;
-      $holes = preg_split("/[\s,]+/", $r[$type]);
-      $holeText = count($holes) > 1 ? 'Holes ' . implode(' and ', $holes) : '#' . $r[$type];
-      $bonusInfo[$type][$r['weekly_id']] = array();
-      $bonusInfo[$type][$r['weekly_id']]['hole'] = $holeText;
-      $bonusInfo[$type][$r['weekly_id']]['date'] = formatDate($r['date']);
-      $bonusInfo[$type][$r['weekly_id']]['player'] = $player[$r['player_id']];
-      $bonusInfo[$type][$r['weekly_id']]['prize'] = formatMoney($prize);
+      $prizePerHit = $prize / count($hits);
+      foreach ($hits as $hit) {
+        $newHit = array();        
+        $newHit['hole'] = 'Hole #' . $hit['hole'];
+        $newHit['date'] = formatDate($hit['date']);
+        $newHit['player'] = $player[$hit['player_id']];
+        $newHit['prize'] = formatMoney($prizePerHit);
+        array_push($bonusInfo[$type], $newHit);
+      }
     }
 
     // figure out how much the pots are worth now
@@ -377,7 +368,7 @@ function get_bonus_pots($courseId) {
       $nextText = " (capped, " . formatMoney($next) . " carries over)";
       $prize = $cap1;
     }
-    $bonusInfo[$type]['pot'] = formatMoney($prize, 0) . $nextText;
+    $bonusPot[$type] = formatMoney($prize, 0) . $nextText;
   }
 
   return $bonusInfo;

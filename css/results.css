@@ -19,6 +19,27 @@
   margin-left: 3rem;
 }
 
+.textareaContainer {
+  margin-top: 1rem;
+}
+
+#customLayoutContainer {
+  display: none;
+}
+
+#customPar {
+  width: 3rem;
+}
+
+.bulkEntryContainer {
+  display: none;
+}
+
+.bulkEntryContainer label {
+  vertical-align: top;
+  margin-left: 3rem;
+}
+
 .notesContainer input {
   width: 32rem;
 }
@@ -54,4 +75,8 @@ input.invalid {
 button {
   font-size: 1rem;
   cursor: pointer;
+}
+
+textarea {
+  vertical-align: top;
 }

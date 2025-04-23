@@ -73,7 +73,7 @@ async function sortTable(ev, field, courseId, weeklyId) {
 	var player = players[i],
 	    p = window.playerData[player],
 	    result = p.result,
-            hcapText = result.player_handicap != null ? result.player_handicap : '&nbsp;',
+            hcapText = result.score > 0 && result.player_handicap != null ? result.player_handicap : '&nbsp;',
 	    scoreText = result.score == -1 ? 'NS' : result.score,
 	    adjScoreText = result.score == -1 ? '&nbsp;' : result.adjusted_score,
 	    prizeText = formatMoney(result.winnings) + (result.winnings > 0 && result.paid == 0 ? '*' : ''),
@@ -122,15 +122,12 @@ function by_name(a, b) {
 // Sorts by first name, with the next name as secondary key.
 function by_first_name(a, b) {
 
-    //    var nameA = window.playerData[a].name.split(" ").shift().toLowerCase(),
-    //	nameB = window.playerData[b].name.split(" ").shift().toLowerCase();
-
     var namesA = window.playerData[a].name.split(" "),
 	namesB = window.playerData[b].name.split(" "),
 	firstA = namesA[0].toLowerCase(),
 	firstB = namesB[0].toLowerCase(),
-	secondA = namesA[1].toLowerCase(),
-	secondB = namesB[1].toLowerCase();
+	secondA = namesA[1] ? namesA[1].toLowerCase() : '',
+	secondB = namesB[1] ? namesB[1].toLowerCase() : '';
 
     var result = firstA.localeCompare(firstB);
 

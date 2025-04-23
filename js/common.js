@@ -39,15 +39,19 @@ function passwordBlurHandler(e) {
 	});
 }
 
-async function calculateHandicaps(courseId, hcapMinRounds, hcapNumRounds, hcapRate, weeklyId) {
+async function calculateHandicaps(courseId, hcapMinRounds, hcapNumRounds, hcapRate, hcapBase, parMap, weeklyId) {
     
-    const parData = await sendRequestAsync('get-pars', { courseId });
+    const parData = await sendRequestAsync('get-pars', { courseId }) || [];
     const pars = {};
     parData.forEach(parRow => {
-	    pars[parRow.id] = parRow.par;
+	    if (hcapBase === 'par') {
+		pars[parRow.id] = parRow.layout === 'custom' ? Number(parRow.custom_par) : parMap[parRow.layout];
+	    } else {
+		pars[parRow.id] =  parRow.par;
+	    }
 	});
 
-    const scores = await sendRequestAsync('get-scores', { weeklyId });
+    const scores = await sendRequestAsync('get-scores', { weeklyId, courseId }) || [];
     const scoresByPlayer = {};
     scores.forEach(scoreRow => {
 	    scoresByPlayer[scoreRow.player_id] = scoresByPlayer[scoreRow.player_id] || [];

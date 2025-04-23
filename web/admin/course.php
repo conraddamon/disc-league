@@ -14,14 +14,15 @@ require_once('util.php');
 #var_dump($_POST);
 
 $courseId = get_input('courseId', 'post');
+plog("Course ID: $courseId");
 $editMode = ($courseId > 0);
-elog(LOG_INFO, "post to course.php, edit mode: " . $editMode);
+plog("post to course.php, edit mode: " . $editMode);
 
-$textFields = array('name', 'contact_name', 'contact_email', 'password', 'layouts', 'location', 'note');
+$textFields = array('name', 'contact_name', 'contact_email', 'password', 'layouts', 'pars', 'location', 'note');
 $numericFields = array('entry', 'prize', 'ace', 'eagle', 'handicap_min_rounds', 'handicap_start', 'handicap_rate', 'handicap_num_rounds', 'initial_ace', 'initial_eagle');
 $moneyFields = array('entry', 'prize', 'ace', 'eagle', 'initial_ace', 'initial_eagle');
 $allFields = array_merge($textFields, $numericFields);
-elog(LOG_INFO, "count: " . count($allFields));
+plog("count: " . count($allFields));
 
 if ($courseId) {
   $sql = "SELECT * FROM course WHERE id=$courseId";
@@ -33,7 +34,7 @@ if ($courseId) {
     }
     $formVal = getValue($f);
     $curVal = $result[$f];
-    elog(LOG_INFO, $f . ": comparing form val [" . $formVal . "] to cur val [" . $curVal . "]");
+    plog($f . ": comparing form val [" . $formVal . "] to cur val [" . $curVal . "]");
     if ($formVal != $curVal) {
       if (!$formVal) {
 	$formVal = $isText ? '' : '0';
@@ -44,7 +45,7 @@ if ($courseId) {
   }
   if (count($update) > 0) {
     $sql = "UPDATE course SET " . implode(',', $update) . " WHERE id=$courseId";
-    elog(LOG_INFO, $sql);
+    plog($sql);
     db_query($sql);
   }
 }
@@ -60,7 +61,7 @@ else {
     array_push($values, $value);
   }
   $sql = "INSERT INTO course(" . implode(',', $keys) . ") VALUES (" . implode(',', $values) . ")";
-  elog(LOG_INFO, $sql);
+  plog($sql);
   $courseId = db_query($sql);
 }
 
@@ -87,7 +88,7 @@ function getValue($f, $quote=false) {
   return $quote && $isText ? quote($val) : $val;
 }
 
-
-header("Location: /dgw/course.html?id=$courseId");
+$extra = propagate_params();
+header("Location: /dgw/course.html?id=$courseId$extra");
 die();
 ?>

@@ -12,8 +12,7 @@ require_once('db.php');
 require_once('log.php');
 require_once('util.php');
 
-$isTest = isset($_GET['test']);
-$test = $isTest ? "&test" : "";
+$extra = propagate_params();
 
 # fetch data about weekly
 $id = get_input('id', 'get');
@@ -47,10 +46,16 @@ $multiLayouts = strpos($courseResult['layouts'], ',') !== false;
 # cobble together a title
 $date = date("M j, Y", strtotime($date));
 $title = "$course disc golf weekly on $date";
-$titleLink = "<a href='course.html?id=$courseId$test'>$course</a> disc golf weekly on $date";
+$titleLink = "<a href='course.html?id=$courseId$extra'>$course</a> disc golf weekly on $date";
 if ($multiLayouts) {
   $layout = $weeklyResult['layout'];
-  $titleLink = $titleLink . " ($layout course)";
+  $customLayout = $weeklyResult['custom_layout'];
+  $layoutText = $layout == 'custom' ? $customLayout : $layout;
+  $index = array_search($layout, explode(',', $courseResult['layouts']));
+  $pars = explode(',', $courseResult['pars']);
+  $coursePar = $pars[$index];
+  $customPar = $weeklyResult['custom_par'];
+  $parText = $layout == 'custom' ? $customPar : $coursePar;
 }
 
 if ($notes) {
@@ -67,7 +72,9 @@ echo <<< EOF
 <title>$title</title>
 </head>
 <body onload='sortTable(null, "place", $courseId, $id);'>
-<h1>$titleLink</h1>
+<h2>$titleLink</h2>
+<p>Layout: $layoutText</p>
+<p>Par: $parText</p>
 <p>The average score was $par. The low scratch score of the day was <span id='low_score'></span> by <span id='low_scorers'></span>.</p>
 $notes
 <table name="results" id="resultsTable" cellspacing=15>
@@ -94,7 +101,7 @@ if ($hasManualHandicap) {
   echo "<p>() means estimated handicap</p>";
 }
 echo <<< EOF
-<p><a href="admin/results.html?weeklyId=$id$test">Edit results</a> (requires password)</p>
+<p><a href="admin/results.html?weeklyId=$id$extra">Edit results</a> (requires password)</p>
 </body>
 </html>
 EOF;

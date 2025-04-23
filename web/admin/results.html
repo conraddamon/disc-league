@@ -17,7 +17,7 @@ function launch() {
 </head>
 <body onload="launch()">
 <h2 class="title">Weekly results</h2>
-<form id="form1" method="post" action="update.php">
+<form id="form1" method="post">
   <div id="weeklyContainer">
     <p>Enter information about the weekly tournament itself below.</p>
     <div class="inputContainer">
@@ -36,6 +36,16 @@ function launch() {
       <label for="password">Password:</label>
       <input type="password" id="password" name="password" tabIndex=0 />
     </div>
+    <div class="textareaContainer" id="customLayoutContainer">
+      <div class="inputContainer">
+	<label for="customLayout">Custom layout:</label>
+	<textarea id="customLayout" name="customLayout" rows="4" cols="70" placeholder="Paste output from UDisc or the event page (it will be parsed immediately), or enter a comma-separated list of holes where first letter denotes tee (S or L), second letter denotes pin position(A, B, or C), an asterisk indicates an extra hole, and a digit indicates a par other than 3."></textarea>
+      </div>
+      <div class="inputContainer">
+	<label for="customPar">Custom par:</label>
+	<input type="text" id="customPar" name="customPar" tabIndex=0 />
+      </div>
+    </div>
     <div class="moneyContainer">
       <span id="courseEntry" class="courseMoney"></span>
       <span id="courseMoney" class="courseMoney"></span>
@@ -50,6 +60,10 @@ function launch() {
       <div class="inputContainer">
 	<input type="checkbox" id="manualHandicaps" name="manualHandicaps" />
 	<label for="manualHandicaps">Allow manual handicaps</label>
+      </div>
+      <div class="inputContainer">
+	<input type="checkbox" id="enableBulkEntry" name="enableBulkEntry" />
+	<label for="enableBulkEntry">Enable bulk entry</label>
       </div>
     </div>
   </div>
@@ -75,6 +89,11 @@ function launch() {
       <input type="text" id="handicap" name="handicap" tabIndex=0 />
     </div>
   </div>
+  <div class="bulkEntryContainer" id="bulkEntryContainer">
+    <label for="bulkEntry">Bulk entry:</label>
+    <textarea id="bulkEntry" name="bulkEntry" rows=5 cols=50 placeholder="each line is player name and score separated by tab or comma; press Return to accept"></textarea>
+  </div>
+    
 
   <ul id="playerDataHeader">
       <li>
