@@ -1,2 +1,2 @@
 # disc-league
-Webapp for managing a regular handicapped disc golf tournament. Depends on disc-common.
+Webapp for managing a handicapped disc golf league. Depends on disc-common.
